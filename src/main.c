@@ -45,6 +45,8 @@ typedef struct temptime
 	int32_t time;
 }temptime_t;
 
+char RxData;
+
 /* Configure RCC clocks */
 //static void prvSetupRCC( void );
 
@@ -141,10 +143,10 @@ int main( void )
 	}
 
 	/* Create the tasks */
- 	xTaskCreate( prvLcdTask, "Lcd", configMINIMAL_STACK_SIZE, NULL, mainLCD_TASK_PRIORITY, &HandleTask1 );
+ 	//xTaskCreate( prvLcdTask, "Lcd", configMINIMAL_STACK_SIZE, NULL, mainLCD_TASK_PRIORITY, &HandleTask1 );
  	xTaskCreate( prvFlashTask1, "Flash1", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask2 );
     xTaskCreate( prvTempTask, "Temp", configMINIMAL_STACK_SIZE+100, NULL, mainFLASH_TASK_PRIORITY, &HandleTask3 );
- 	xTaskCreate( prvTickTask, "TickTask", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask4 );
+ 	//xTaskCreate( prvTickTask, "TickTask", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask4 );
  	xTaskCreate( prvSendTemp, "SendTemp", configMINIMAL_STACK_SIZE+200, NULL, mainFLASH_TASK_PRIORITY, &HandleTask5 );
 
 	/* Start the scheduler. */
@@ -167,10 +169,24 @@ static void prvSendTemp( void *pvParameters)
 		//lcd_draw_fillrect(85,10,28,50,0x0000);
 		//lcd_draw_string(5,10, buf,0xFFFF,1);
 		//strcat(buf,timebuf);
+		char c;
+		//if( xQueue != 0){
+		xQueueReceive(xQueue, &c, ( TickType_t ) 10);
+		if(c=='c'){
+			sprintf(buf, "New config");
+			prvSendMessageUSART2(buf);
+			c=0;
+		}
+		//}
+		//else{
 		sprintf(buf, "teste");
 		prvSendMessageUSART2(buf);
+		//}
+
 	}
 }
+
+
 
 
 static void prvTickTask( void *pvParameters)

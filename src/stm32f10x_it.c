@@ -9,6 +9,7 @@
 #include "stm32f10x_it.h"
 
 extern QueueHandle_t xQueue, xTickQueue;
+extern char RxData;
 
 
 
@@ -564,7 +565,7 @@ void USART1_IRQHandler(void)
 *******************************************************************************/
 void USART2_IRQHandler(void)
 {
-	char RxData;
+	//char RxData;
 	static BaseType_t pxHigherPriorityTaskWoken;
 	if(USART_GetITStatus(USART2, USART_IT_TXE) == SET)
 	{
