@@ -568,6 +568,7 @@ void USART2_IRQHandler(void)
 	//char RxData;
 	static BaseType_t pxHigherPriorityTaskWoken;
 	if(USART_GetITStatus(USART2, USART_IT_TXE) == SET)
+
 	{
 		/*codigo relativo a transmiss\98ao - buffer vazio*/
 		/*...*/
@@ -576,6 +577,7 @@ void USART2_IRQHandler(void)
 	else if(USART_GetITStatus(USART2, USART_IT_RXNE) == SET)
 	{
 		/*codigo relativo a rece\E7\98ao - buffer cheio*/
+
 		RxData = USART_ReceiveData(USART2);
 		USART_ClearITPendingBit(USART2, USART_IT_RXNE);
 		xQueueSendToBackFromISR( xQueue, &RxData, &pxHigherPriorityTaskWoken );

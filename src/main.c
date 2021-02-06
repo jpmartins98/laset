@@ -145,7 +145,7 @@ int main( void )
 	/* Create the tasks */
  	//xTaskCreate( prvLcdTask, "Lcd", configMINIMAL_STACK_SIZE, NULL, mainLCD_TASK_PRIORITY, &HandleTask1 );
  	xTaskCreate( prvFlashTask1, "Flash1", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask2 );
-    xTaskCreate( prvTempTask, "Temp", configMINIMAL_STACK_SIZE+100, NULL, mainFLASH_TASK_PRIORITY, &HandleTask3 );
+    //xTaskCreate( prvTempTask, "Temp", configMINIMAL_STACK_SIZE+100, NULL, mainFLASH_TASK_PRIORITY, &HandleTask3 );
  	//xTaskCreate( prvTickTask, "TickTask", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask4 );
  	xTaskCreate( prvSendTemp, "SendTemp", configMINIMAL_STACK_SIZE+200, NULL, mainFLASH_TASK_PRIORITY, &HandleTask5 );
 
@@ -160,27 +160,85 @@ static void prvSendTemp( void *pvParameters)
 {
 	temptime_t temp;
 	char buf[50],timebuf[50];
+	char str[6];
+	int i=0;
+
+
 	for(;;)
 	{
-		xQueueReceive(xTemptimeQueue, &temp, ( TickType_t ) portMAX_DELAY);
+		//xQueueReceive(xTemptimeQueue, &temp, ( TickType_t ) portMAX_DELAY);
 
 		//sprintf(buf, "Temperatura = %ld",temp.temp);
 		//sprintf(timebuf, " || Tempo = %ld \r\n",(temp.time/100));  //taking out 01 to the temp value
 		//lcd_draw_fillrect(85,10,28,50,0x0000);
 		//lcd_draw_string(5,10, buf,0xFFFF,1);
 		//strcat(buf,timebuf);
-		char c;
-		//if( xQueue != 0){
-		xQueueReceive(xQueue, &c, ( TickType_t ) 10);
-		if(c=='c'){
-			sprintf(buf, "New config");
-			prvSendMessageUSART2(buf);
-			c=0;
+		//char c;
+
+
+		if( xQueue != 0){
+			char c;
+			xQueueReceive(xQueue, &c, ( TickType_t ) portMAX_DELAY);
+			if (i<=5){
+				str[i]=c;
+				i++;
+			}
+
+			prvSendMessageUSART2(str);
+			//prvSendMessageUSART2('\n');
+
 		}
+		if (i>5){
+			i=0;
+			char aaa[]={'c', 'o', 'n', 'f', 'i', 'g'};
+			int cnt2=0;
+			for (int cnt=0; cnt<=5;cnt++){
+				if (aaa[cnt]==str[cnt]){
+					cnt2++;
+				}
+			}
+			if (cnt2==6){
+				sprintf(buf,"new config");
+				prvSendMessageUSART2(buf);
+			}
+			else{
+				sprintf(buf,"char %d", cnt2);
+				prvSendMessageUSART2(buf);
+			}
+		}
+		//char aaa[]={'c', 'o', 'n', 'f', 'i', 'g'};
+		//int ret = strcmp(str, aaa);
+		//if(ret < 0) {
+		      //sprintf(buf,"str1 is less than str2");
+		  // } else if(ret > 0) {
+		      //sprintf(buf,"str2 is less than str1");
+		   //} else {
+		     // sprintf(buf,"str1 is equal to str2");
+		   //}
+
+		/*if (strcmp(str, "config")==0){
+			sprintf(buf, "New config");
+			//prvSendMessageUSART2(buf);
+		}
+		else{
+			sprintf(buf, 'fail ');
+			//prvSendMessageUSART2(buf);
+		}*/
+
+		//prvSendMessageUSART2(buf);
+		//prvSendMessageUSART2('\n');
+
+
+
+		//if(c=='c'){
+		//	sprintf(buf, "New config");
+		//	prvSendMessageUSART2(buf);
+		//	c=0;
+		//}
 		//}
 		//else{
-		sprintf(buf, "teste");
-		prvSendMessageUSART2(buf);
+		//sprintf(buf, "teste");
+		//prvSendMessageUSART2(buf);
 		//}
 
 	}
