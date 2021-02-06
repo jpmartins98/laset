@@ -190,59 +190,12 @@ static void prvSendTemp( void *pvParameters)
 		}
 		if (i>5){
 			i=0;
-			char aaa[]={'c', 'o', 'n', 'f', 'i', 'g'};
-			int cnt2=0;
-			for (int cnt=0; cnt<=5;cnt++){
-				if (aaa[cnt]==str[cnt]){
-					cnt2++;
-				}
-			}
-			if (cnt2==6){
-				sprintf(buf,"new config");
-				prvSendMessageUSART2(buf);
-			}
-			else{
-				sprintf(buf,"char %d", cnt2);
-				prvSendMessageUSART2(buf);
-			}
+
 		}
-		//char aaa[]={'c', 'o', 'n', 'f', 'i', 'g'};
-		//int ret = strcmp(str, aaa);
-		//if(ret < 0) {
-		      //sprintf(buf,"str1 is less than str2");
-		  // } else if(ret > 0) {
-		      //sprintf(buf,"str2 is less than str1");
-		   //} else {
-		     // sprintf(buf,"str1 is equal to str2");
-		   //}
-
-		/*if (strcmp(str, "config")==0){
-			sprintf(buf, "New config");
-			//prvSendMessageUSART2(buf);
-		}
-		else{
-			sprintf(buf, 'fail ');
-			//prvSendMessageUSART2(buf);
-		}*/
-
-		//prvSendMessageUSART2(buf);
-		//prvSendMessageUSART2('\n');
-
-
-
-		//if(c=='c'){
-		//	sprintf(buf, "New config");
-		//	prvSendMessageUSART2(buf);
-		//	c=0;
-		//}
-		//}
-		//else{
-		//sprintf(buf, "teste");
-		//prvSendMessageUSART2(buf);
-		//}
 
 	}
 }
+
 
 
 
