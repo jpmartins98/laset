@@ -569,7 +569,7 @@ void USART2_IRQHandler(void)
 	static char str[6];
 	char config[]={'c', 'o', 'n', 'f', 'i', 'g'};
 	static int character_cnt=0;
-	static char test='x';
+	//static char test='x';
 	static BaseType_t pxHigherPriorityTaskWoken;
 	if(USART_GetITStatus(USART2, USART_IT_TXE) == SET)
 
@@ -584,23 +584,23 @@ void USART2_IRQHandler(void)
 
 		RxData = USART_ReceiveData(USART2);
 		USART_ClearITPendingBit(USART2, USART_IT_RXNE);
-		if (character_cnt<=5){
-			if (RxData == config[character_cnt]){
-				str[character_cnt]=RxData;
-				character_cnt++;
-				test='y';
-			}
-			else{
-				character_cnt=0;
-				test=RxData;
+		//if (character_cnt<=5){
+		//	if (RxData == config[character_cnt]){
+		//		str[character_cnt]=RxData;
+		//		character_cnt++;
+		//		test='y';
+		//	}
+		//	else{
+		//		character_cnt=0;
+		//		test=RxData;
 
-			}
-		}
-		if ((character_cnt>5)){
-			test='a';
-		}
+		//	}
+		//}
+		//if ((character_cnt>5)){
+		//	test='a';
+		//}
 
-		xQueueSendToBackFromISR( xQueue, &test, &pxHigherPriorityTaskWoken );
+		xQueueSendToBackFromISR( xQueue, &RxData, &pxHigherPriorityTaskWoken );
 		if( pxHigherPriorityTaskWoken == pdTRUE )
 			taskYIELD(); /* forces the context change */
 	}
