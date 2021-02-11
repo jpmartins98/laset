@@ -34,6 +34,15 @@
 #define mainUSART_TASK_PRIORITY	( tskIDLE_PRIORITY + 1)
 #define mainLCD_TASK_PRIORITY	( tskIDLE_PRIORITY + 1)
 
+/*I2C*/
+//#define I2Cx_RCC        RCC_APB1Periph_I2C1
+//#define I2Cx            I2C1
+//#define I2C_GPIO_RCC    RCC_APB2Periph_GPIOB
+//#define I2C_GPIO        GPIOB
+//#define I2C_PIN_SDA     GPIO_Pin_7
+//#define I2C_PIN_SCL     GPIO_Pin_8
+
+
 /* The rate at which the flash task toggles the LED. */
 #define mainFLASH_DELAY			( ( TickType_t ) 1000 / portTICK_RATE_MS )
 /* The rate at which the temperature is read. */
@@ -44,26 +53,30 @@ typedef struct strConfig
 {
 	int8_t comand[5];         // 1-atualizar_hora 2-report_config 3-submeter_configuracao 4-configurar modo  5-configurar  7-ports 8-leds 9-frequencia// [comando, porto, valor ,aplicar]
 	int8_t modo;			//1-continuo 2-condicional 3-sleep
+	float freq_datalog;	// frequencia em vezes por segundo (Hz)
 	int8_t start_data;
 	int8_t end_data;
 	int8_t start_time;
 	int8_t end_time;
-	int8_t freq_datalog;	// frequencia em vezes por segundo
-	int8_t sensores_now[10];  //
+	int8_t sensores_now[10];  	//
 	int8_t sesores_cond[6];		//sensores que teram trubleshoot
 	int8_t sensores_cond_value[6]; //volar do trubleshot so sensor da mesma posicao do vetor sensores_cond
 	int8_t leds;			//0 - desligado 1 -ligado
 	int8_t freq_leds;		//frequencia em vezes por dia
-	int8_t time_on_off;		//max .5 e significa q passa tanto tempo ligado como desligado
+	int8_t time_on_off_leds;		//max .5 e significa q passa tanto tempo ligado como desligado
 	char port1[10];
 	char port2[10];
 	char port3[10];
 	char port4[10];
 	char port5[10];
-	int armazenar;   // 1-enviar dados pela uart destina 	2 - armazenar no sd card
+	//int armazenar;   // 1-enviar dados pela uart destina 	2 - armazenar no sd card
 	char config[200];
+	int I2C_clock_speed;
+	int I2C_Slave_adress[4];
+	int I2C_Master_adress;
 }strConfig;
 strConfig MyConfig;
+strConfig Runing_Config;
 
 uint16_t ADC1_XYZ[3];
 int Gx,Gy,Gz;
@@ -91,6 +104,7 @@ void ADC_Config(void);
 void read_acel(void);
 void verificar_comando(char comparar[50] ,char str[50], int tamanho_palavra, int comando[5]);
 void verificar_comando_port(char str[50]);
+void i2c_init(void);
 
 /* Simple LED toggle task. */
 static void prvFlashTask1( void *pvParameters );
@@ -108,6 +122,8 @@ static void prvSetupEXTI1( void );
 static void prvTickTask( void *pvParameters);
 
 static void prvSendTemp( void *pvParameters);
+
+
 
 
 /********** Useful functions **********/
@@ -137,6 +153,14 @@ int main( void )
 {
 	/*Setup the hardware, RCC, GPIO, etc...*/
     //prvSetupRCC();
+	Runing_Config.I2C_clock_speed=100000;
+	Runing_Config.I2C_Slave_adress[1]=0x08;Runing_Config.I2C_Slave_adress[1]=0;Runing_Config.I2C_Slave_adress[2]=0;Runing_Config.I2C_Slave_adress[3]=0;
+	Runing_Config.I2C_Master_adress=0x00;
+	Runing_Config.modo=3;									//ctd em sleep
+	Runing_Config.freq_datalog=1/60;						//quando em modo continuo ou condicional freq minuto a minuto
+	Runing_Config.leds=0;									//led off
+	Runing_Config.freq_leds=1/60/60/2; 						// quando led on freq uma vez de 2 em duas horas
+	Runing_Config.time_on_off_leds=1/60;					//quando led on 1 min on por 60 min off
     prvSetupRCCHSI();
 	prvSetupUSART2();
     prvSetupUSART_INT();
@@ -145,6 +169,7 @@ int main( void )
     //prvSetupADC();
     DMA_Config();
     ADC_Config();
+    i2c_init();
 
     xQueue = xQueueCreate( 10, sizeof( char ) );
 
@@ -204,9 +229,6 @@ static void prvSendTemp( void *pvParameters)
 	char receveid;
 	char str[50];
 	int i=0;
-	int k;
-	int b;
-	char comparar[50];
 	MyConfig.comand[1]=0;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
 
 
@@ -218,7 +240,6 @@ static void prvSendTemp( void *pvParameters)
 			str[i]=receveid;
 			i++;
 			if (str[i-1]=='\r'){ //menu_principal
-				k=0;
 				switch(i){
 					case 4:{
 						comando[0]=110; comando[1]=0; comando[2]=0; comando[3]=1;
@@ -246,7 +267,6 @@ static void prvSendTemp( void *pvParameters)
 				}
 
 				if (MyConfig.comand[0]>4){			//menu_configuração
-
 					switch(i){
 						case 4:{
 							comando[0]=21; comando[1]=0; comando[2]=0; comando[3]=0;
@@ -605,9 +625,12 @@ static void prvSetupEXTI1( void )
     EXTI_Init(&EXTI_InitStructure);
 }
 
+
+
 static void prvSetupUSART_INT( void )
 {
-	NVIC_InitTypeDef NVIC_InitStructure;
+	#define abb NVIC_InitStructure
+	NVIC_InitTypeDef abb;
 	/* Configura o Priority Group com 1 bit */
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
 	/* Interrup\E7\E3o global do USART2 com prioridade 0 sub-prioridade 2 */
@@ -835,4 +858,30 @@ void verificar_comando_port(char str[50]){
 		}
 		return;
 	}
+}
+
+
+void i2c_init()
+{
+    // Initialization struct
+
+    I2C_InitTypeDef I2C_InitStruct;
+    GPIO_InitTypeDef GPIO_InitStruct;
+
+    // Step 1: Initialize I2C
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
+    I2C_InitStruct.I2C_ClockSpeed = Runing_Config.I2C_clock_speed;//100000
+    I2C_InitStruct.I2C_Mode = I2C_Mode_I2C;
+    I2C_InitStruct.I2C_DutyCycle = I2C_DutyCycle_2;
+    I2C_InitStruct.I2C_OwnAddress1 = Runing_Config.I2C_Master_adress;//0x00
+    I2C_InitStruct.I2C_Ack = I2C_Ack_Disable; //I2C_Ack_Enable; // disable acknowledge when reading (can be changed later on)
+    I2C_InitStruct.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
+    I2C_Init(I2C1, &I2C_InitStruct);
+    I2C_Cmd(I2C1, ENABLE);
+    // Step 2: Initialize GPIO as open drain alternate function
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_7;
+    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF_OD;
+    GPIO_InitStruct.GPIO_Speed = GPIO_Speed_2MHz;
+    GPIO_Init(GPIOB, &GPIO_InitStruct);
 }

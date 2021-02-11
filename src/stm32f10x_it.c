@@ -566,9 +566,9 @@ void USART1_IRQHandler(void)
 void USART2_IRQHandler(void)
 {
 	//char RxData;
-	static char str[6];
+	/*static char str[6];
 	char config[]={'c', 'o', 'n', 'f', 'i', 'g'};
-	static int character_cnt=0;
+	static int character_cnt=0;*/
 	//static char test='x';
 	static BaseType_t pxHigherPriorityTaskWoken;
 	if(USART_GetITStatus(USART2, USART_IT_TXE) == SET)
