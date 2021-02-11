@@ -33,10 +33,10 @@ endif
 all: 3SO_FreeRTOS.elf
 
 # Tool invocations
-3SO_FreeRTOS.elf: $(OBJS) $(USER_OBJS) /home/joao/Documentos/laset_freertos/LinkerScript.ld
+3SO_FreeRTOS.elf: $(OBJS) $(USER_OBJS) C:\Users\Utilizador\laset/LinkerScript.ld
 	@echo 'Building target: $@'
 	@echo 'Invoking: MCU GCC Linker'
-	arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -mfloat-abi=soft -T"/home/joao/Documentos/laset_freertos/LinkerScript.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "3SO_FreeRTOS.elf" @"objects.list" $(USER_OBJS) $(LIBS) -lm
+	arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -mfloat-abi=soft -T"C:/Users/Utilizador/laset/LinkerScript.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "3SO_FreeRTOS.elf" @"objects.list" $(USER_OBJS) $(LIBS) -lm
 	@echo 'Finished building target: $@'
 	@echo ' '
 	$(MAKE) --no-print-directory post-build

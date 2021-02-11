@@ -42,7 +42,7 @@
 
 typedef struct strConfig
 {
-	int8_t comand[4];         // 1-atualizar_hora 2-report_config 3-submeter_configuracao 4-configurar modo  5-configurar  7-ports 8-leds 9-frequencia// [comando, porto, valor ,aplicar]
+	int8_t comand[5];         // 1-atualizar_hora 2-report_config 3-submeter_configuracao 4-configurar modo  5-configurar  7-ports 8-leds 9-frequencia// [comando, porto, valor ,aplicar]
 	int8_t modo;			//1-continuo 2-condicional 3-sleep
 	int8_t start_data;
 	int8_t end_data;
@@ -63,6 +63,7 @@ typedef struct strConfig
 	int armazenar;   // 1-enviar dados pela uart destina 	2 - armazenar no sd card
 	char config[200];
 }strConfig;
+strConfig MyConfig;
 
 uint16_t ADC1_XYZ[3];
 int Gx,Gy,Gz;
@@ -88,6 +89,8 @@ static void prvSetupGPIO( void );
 void DMA_Config(void);
 void ADC_Config(void);
 void read_acel(void);
+void verificar_comando(char comparar[50] ,char str[50], int tamanho_palavra, int comando[5]);
+void verificar_comando_port(char str[50]);
 
 /* Simple LED toggle task. */
 static void prvFlashTask1( void *pvParameters );
@@ -196,7 +199,7 @@ static void prvSendTemp( void *pvParameters)
 	//char str[6];
 	//int i=0;
 
-	strConfig MyConfig;
+	int comando[5];
 	char buf[100];
 	char receveid;
 	char str[50];
@@ -210,315 +213,148 @@ static void prvSendTemp( void *pvParameters)
 
 	for(;;)
 	{
-		//xQueueReceive(xTemptimeQueue, &temp, ( TickType_t ) portMAX_DELAY);
+		if( uxQueueMessagesWaiting(xQueue) > 0){
+			xQueueReceive(xQueue, &receveid, ( TickType_t ) portMAX_DELAY);
+			str[i]=receveid;
+			i++;
+			if (str[i-1]=='\r'){ //menu_principal
+				k=0;
+				switch(i){
+					case 4:{
+						comando[0]=110; comando[1]=0; comando[2]=0; comando[3]=1;
+						verificar_comando("imu" , str, 3, comando);
+						if (MyConfig.comand[0]==110){read_acel();}
+						break;
+					}
+					case 7:{
+						comando[0]=5; comando[1]=0; comando[2]=0; comando[3]=0;
+						verificar_comando("config" , str, 6, comando);
+						break;
+					}
+					case 12:{
+						comando[0]=1; comando[1]=0; comando[2]=0; comando[3]=0;
+						verificar_comando("update_time" , str, 11, comando);
+						break;
+					}
+					case 14:{
+						comando[0]=2; comando[1]=0; comando[2]=0; comando[3]=0;
+						verificar_comando("report_config" , str, 11, comando);
+						break;
+					}
+					default:{break;}
 
-		//sprintf(buf, "Temperatura = %ld",temp.temp);
-		//sprintf(timebuf, " || Tempo = %ld \r\n",(temp.time/100));  //taking out 01 to the temp value
-		//lcd_draw_fillrect(85,10,28,50,0x0000);
-		//lcd_draw_string(5,10, buf,0xFFFF,1);
-		//strcat(buf,timebuf);
-		//char c;
+				}
 
+				if (MyConfig.comand[0]>4){			//menu_configuração
 
+					switch(i){
+						case 4:{
+							comando[0]=21; comando[1]=0; comando[2]=0; comando[3]=0;
+							verificar_comando("uvc" , str, 3, comando);
+							break;}
 
-		//if( xQueue != 0){
-			//char c;
-			//xQueueReceive(xQueue, &c, ( TickType_t ) portMAX_DELAY);
-			//if (i<=5){
-			//	str[i]=c;
-			//	i++;
-			//}
+						case 6:{
+							verificar_comando_port(str); //port
+							break;}
+						case 11:{
+							comando[0]=20; comando[1]=25; comando[2]=3; comando[3]=0;
+							verificar_comando("sleep_mode" , str, 10, comando);
+						break;}
 
-			//prvSendMessageUSART2(str);
-			//prvSendMessageUSART2('\n');
+						case 14:{
+							comando[0]=3; comando[1]=0; comando[2]=0; comando[3]=1;
+							verificar_comando("submit_config" , str, 13, comando);
+							break;}
 
-		//}
-		//if (i>5){
-			//i=0;
+						case 15:{
+							comando[0]=20; comando[1]=25; comando[2]=1; comando[3]=0;
+							verificar_comando("continuos_mode" , str, 14, comando);
+							break;}
 
-//		}
+						case 16:{
+							comando[0]=22; comando[1]=100; comando[2]=0; comando[3]=0;
+							verificar_comando("freq_amostr_all" , str, 15, comando);
+							break;}
 
-//	}
-//}
+						case 17:{
+							comando[0]=20; comando[1]=25; comando[2]=2; comando[3]=0;
+							verificar_comando("conditional_mode" , str, 16, comando);
+							break;}
 
-			if( uxQueueMessagesWaiting(xQueue) > 0){
-				xQueueReceive(xQueue, &receveid, ( TickType_t ) portMAX_DELAY);
-				str[i]=receveid;
+						 default:{break;}
+						}
+				}
 
-
-				i++;
-				if (str[i-1]=='.'){
-					sprintf(buf,'%d',i);
-
-
-					k=0;
+				if (MyConfig.comand[0]==7 || (MyConfig.comand[0]<74 && MyConfig.comand[0]>69 ) ){ //port menu
 					switch(i){
 
-						case 4:
-							b=0;
-							sprintf(comparar,"imu");
-							for (k=0;k<3;k++){
-								if (comparar[k]==str[k]){b++;}else{b=100;break;}
-							}
-							if(b==3){
-								read_acel();
-								sprintf(buf, "imu_reconhecido, %d,%i,x->%d mg,y->%d mg,z->%d mg \r\n",b,i,Gx,Gy,Gz);//ADC1_XYZ[0],ADC1_XYZ[1],ADC1_XYZ[2]
-								prvSendMessageUSART2(buf);
-								//enquanto a configurar ctd esta parado ou maior
-							}
-							break;
+						case 3:{
+							comando[0]=70; comando[1]=MyConfig.comand[1]; comando[2]=1; comando[3]=1;
+							verificar_comando("on" , str, 2, comando);
+							break;}
 
-						case 7:
-							b=0;
-							sprintf(comparar,"config \r\n");
-							for (k=0;k<6;k++){
-								if (comparar[k]==str[k]){b++;}else{b=100;break;}
-							}
-							if(b==6){
-								sprintf(buf, "config_reconhecido. \r\n");
-								prvSendMessageUSART2(buf);
-								MyConfig.comand[1]=5;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=0;		//enquanto a configurar ctd esta parado ou maior
-							}
-							break;
+						case 4:{
+							comando[0]=70; comando[1]=MyConfig.comand[1]; comando[2]=0; comando[3]=1;
+							verificar_comando("off" , str, 3, comando);
+							break;}
 
-						case 12:
-							b=0;
-							sprintf(comparar,"update_time");
-							for (k=0;k<11;k++){
-								if (comparar[k]==str[k]){b++;}else{b=100;break;}
-							}
-							if(b==11){
-								sprintf(buf, "update_time_reconhecido. \r\n");
-								MyConfig.comand[1]=1;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=1;
-								prvSendMessageUSART2(buf);
-							}
-							break;
+						case 5:{
+							comando[0]=71; comando[1]=MyConfig.comand[1]; comando[2]=0; comando[3]=1;
+							verificar_comando("info" , str, 4, comando);
+							comando[0]=72; comando[1]=MyConfig.comand[1]; comando[2]=0; comando[3]=0;
+							verificar_comando("name" , str, 4, comando);
+							break;}
 
-						case 14:
-								b=0;
-								sprintf(comparar,"report_config \r\n");
-								for (k=0;k<13;k++){
-									if (comparar[k]==str[k]){b++;}else{b=100;break;}
-								}
-								if(b==13){
-									sprintf(buf, "report_config_reconhecido. \r\n");
-									MyConfig.comand[1]=2;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=1;
-									prvSendMessageUSART2(buf);
-								}
-								break;
+						case 12:{
+							comando[0]=73; comando[1]=MyConfig.comand[1]; comando[2]=0; comando[3]=0;
+							verificar_comando("freq_amostr" , str, 11, comando);
+							break;}
 
-						default:
-								break;
-						}
+						default:{break;}
+					}
 
-					if (MyConfig.comand[1]==5){
-						switch(i){
+				}
+				if ((MyConfig.comand[0]==20 || (MyConfig.comand[0]<56 && MyConfig.comand[0]>49 )) && MyConfig.comand[2]==2){  //continuos mode menu
+					switch(i){
+						case 18:{
+							comando[0]=50; comando[1]=0; comando[2]=MyConfig.comand[2]; comando[3]=0;
+							verificar_comando("add_condition_max" , str, 17, comando);
+							comando[0]=51; comando[1]=0; comando[2]=MyConfig.comand[2]; comando[3]=0;
+							verificar_comando("add_condition_min" , str, 17, comando);
+						break;}
 
-							case 15:
-								b=0;
-								sprintf(comparar,"continuos_mode \r\n");
-								for (k=0;k<14;k++){
-									if (comparar[k]==str[k]){b++;}else{b=100;break;}
-								}
-								if(b==14){
-									sprintf(buf, "continuos_mode, %d,%i \r\n",b,i);
-									prvSendMessageUSART2(buf);
-									MyConfig.comand[1]=4;MyConfig.comand[2]=100;MyConfig.comand[3]=1;MyConfig.comand[4]=1;
-									}
-								break;
+						case 14:{
+							comando[0]=52; comando[1]=0; comando[2]=MyConfig.comand[2]; comando[3]=0;
+							verificar_comando("del_condition" , str, 13, comando);
+						break;}
 
-							case 17:
-								b=0;
-								sprintf(comparar,"conditional_mode \r\n");
-								for (k=0;k<16;k++){
-									if (comparar[k]==str[k]){b++;}else{b=100;break;}
-								}
-								if(b==16){
-									sprintf(buf, "conditional_mode_reconhecido, %d,%i \r\n",b,i);
-									prvSendMessageUSART2(buf);
-									MyConfig.comand[4]=4;MyConfig.comand[2]=100;MyConfig.comand[3]=2;MyConfig.comand[4]=1;
-								}
-								break;
+						case 11:{
+								comando[0]=54; comando[1]=0; comando[2]=MyConfig.comand[2]; comando[3]=0;
+								verificar_comando("start_time" , str, 10, comando);
+								break;}
 
-							case 11:
-								b=0;
-								sprintf(comparar,"sleep_mode \r\n");
-								for (k=0;k<10;k++){
-									if (comparar[k]==str[k]){b++;}else{b=100;break;}
-								}
-								if(b==10){
-									sprintf(buf, "sleep_mode_reconhecido, %d,%i \r\n",b,i);
-									prvSendMessageUSART2(buf);
-									MyConfig.comand[4]=4;MyConfig.comand[2]=100;MyConfig.comand[3]=3;MyConfig.comand[4]=1;
-								}
-								break;
+						case 9:{
+									comando[0]=55; comando[1]=0; comando[2]=MyConfig.comand[2]; comando[3]=0;
+									verificar_comando("end_time" , str, 8, comando);
+									break;}
 
-								case 6:
-									b=0;
-									sprintf(comparar,"port");
-									for (k=0;k<4;k++){
-										if (comparar[k]==str[k]){b++;}else{b=100;break;}
-									}
-									if(b==4){
-										switch(str[4]){
+						case 7:{
+							comando[0]=53; comando[1]=0; comando[2]=MyConfig.comand[2]; comando[3]=1;
+							verificar_comando("report" , str, 6, comando);
+							break;}
 
-											case '1':
-												sprintf(buf, "port1_reconhecido, %d,%i \r\n",b,i);
-												prvSendMessageUSART2(buf);
-												MyConfig.comand[1]=7;MyConfig.comand[2]=1;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-												break;
-
-											case '2':
-												sprintf(buf, "port2_reconhecido, %d,%i \r\n",b,i);
-												prvSendMessageUSART2(buf);
-												MyConfig.comand[1]=7;MyConfig.comand[2]=2;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-												break;
-
-											case '3':
-												sprintf(buf, "port3_reconhecido, %d,%i ",b,i);
-												prvSendMessageUSART2(buf);
-												MyConfig.comand[1]=7;MyConfig.comand[2]=3;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-												break;
-
-											case '4':
-												sprintf(buf, "port4_reconhecido, %d,%i \r\n",b,i);
-												prvSendMessageUSART2(buf);
-												MyConfig.comand[1]=7;MyConfig.comand[2]=4;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-												break;
-
-											case '5':
-												sprintf(buf, "port5_reconhecido, %d,%i \r\n",b,i);
-												prvSendMessageUSART2(buf);
-												MyConfig.comand[1]=7;MyConfig.comand[2]=5;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-												break;
-
-											default:
-												break;
-										}
-									}
-									break;
-
-								case 4:
-									b=0;
-									sprintf(comparar,"uvc");
-									for (k=0;k<3;k++){
-										if (comparar[k]==str[k]){b++;}else{b=100;break;}
-									}
-									if(b==3){
-										sprintf(buf, "uvc_reconhecido, %d,%i \r\n",b,i);
-										prvSendMessageUSART2(buf);
-										MyConfig.comand[1]=8;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-									}
-									break;
-
-								case 5:
-									b=0;
-									sprintf(comparar,"freq");
-									for (k=0;k<4;k++){
-										if (comparar[k]==str[k]){b++;}else{b=100;break;}
-									}
-									if(b==4){
-										sprintf(buf, "freq_reconhecido, %d,%i \r\n",b,i);
-										prvSendMessageUSART2(buf);
-										MyConfig.comand[1]=9;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-									}
-									break;
-
-								case 14:
-									b=0;
-									sprintf(comparar,"add_condition");
-									for (k=0;k<13;k++){
-										if (comparar[k]==str[k]){b++;}else{b=100;break;}
-									}
-									if(b==13){
-										sprintf(buf, "add_condiction_reconhecido, %d,%i \r\n",b,i);
-										prvSendMessageUSART2(buf);
-										MyConfig.comand[1]=10;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-									}
-									b=0;
-									sprintf(comparar,"del_condition");
-									for (k=0;k<13;k++){
-										if (comparar[k]==str[k]){b++;}else{b=100;break;}
-									}
-									if(b==13){
-										sprintf(buf, "del_condition_reconhecido, %d,%i \r\n",b,i);
-										prvSendMessageUSART2(buf);
-										MyConfig.comand[1]=10;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-									}
-									b=0;
-									sprintf(comparar,"submit_config");
-									for (k=0;k<13;k++){
-										if (comparar[k]==str[k]){b++;}else{b=100;break;}
-									}
-									if(b==13){
-										sprintf(buf, "submit_config_reconhecido, %d,%i \r\n",b,i);
-										prvSendMessageUSART2(buf);
-										MyConfig.comand[3]=10;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=1;
-									}
-									break;
-
-								 default:
-									 break;
-								}
-							}
-								if (MyConfig.comand[1]==7){
-
-									switch(i){
-
-										case 3:
-											b=0;
-											sprintf(comparar,"on");
-											for (k=0;k<2;k++){
-													if (comparar[k]==str[k]){b++;}else{b=100;break;}
-											}
-											if(b==2){
-												sprintf(buf, "on_reconhecido, %d,%i ",b,i);
-												prvSendMessageUSART2(buf);
-												MyConfig.comand[1]=7;MyConfig.comand[3]=1;MyConfig.comand[4]=1;
-											}
-											break;
-
-										case 4:
-											b=0;
-											sprintf(comparar,"off");
-											for (k=0;k<3;k++){
-													if (comparar[k]==str[k]){b++;}else{b=100;break;}
-											}
-											if(b==3){
-												sprintf(buf, "off_reconhecido, %d,%i ",b,i);
-												prvSendMessageUSART2(buf);
-												MyConfig.comand[1]=7;MyConfig.comand[3]=0;MyConfig.comand[4]=1;
-											}
-											break;
-
-										case 5:
-											b=0;
-											sprintf(comparar,"info");
-											for (k=0;k<4;k++){
-													if (comparar[k]==str[k]){b++;}else{b=100;break;}
-											}
-											if(b==4){
-												sprintf(buf, "info_reconhecido, %d,%i ",b,i);
-												prvSendMessageUSART2(buf);
-												MyConfig.comand[1]=70;MyConfig.comand[4]=1;
-											}
-											break;
-
-										default:
-											break;
-									}
-
-							}
-
-							i=0;
-							str[0]='.';
-						}
-						if (i>49){
-							i=0;
-							sprintf(buf, "limite char por comando");
-							prvSendMessageUSART2(buf);
-							str[0]='.';
-						}
+						default:{break;}
+					}
+				}
+				i=0;
+				str[0]='.';
+			}
+			if (i>49){
+				i=0;
+				sprintf(buf, "limite char por comando");
+				prvSendMessageUSART2(buf);
+				str[0]='.';
+			}
 
 		}
 	}
@@ -527,7 +363,36 @@ static void prvSendTemp( void *pvParameters)
 
 
 
+//xQueueReceive(xTemptimeQueue, &temp, ( TickType_t ) portMAX_DELAY);
 
+//sprintf(buf, "Temperatura = %ld",temp.temp);
+//sprintf(timebuf, " || Tempo = %ld \r\n",(temp.time/100));  //taking out 01 to the temp value
+//lcd_draw_fillrect(85,10,28,50,0x0000);
+//lcd_draw_string(5,10, buf,0xFFFF,1);
+//strcat(buf,timebuf);
+//char c;
+
+
+
+//if( xQueue != 0){
+	//char c;
+	//xQueueReceive(xQueue, &c, ( TickType_t ) portMAX_DELAY);
+	//if (i<=5){
+	//	str[i]=c;
+	//	i++;
+	//}
+
+	//prvSendMessageUSART2(str);
+	//prvSendMessageUSART2('\n');
+
+//}
+//if (i>5){
+	//i=0;
+
+//		}
+
+//	}
+//}
 
 
 static void prvTickTask( void *pvParameters)
@@ -895,6 +760,7 @@ void ADC_Config(void){
 }
 
 void read_acel(void){
+		char buf[50];
 		while(DMA_GetFlagStatus(DMA1_FLAG_TC1) == RESET);
 		DMA_ClearFlag(DMA1_FLAG_TC1);
 		//while(ADC_GetFlagStatus(ADC_FLAG_STRT) == RESET);
@@ -902,4 +768,71 @@ void read_acel(void){
 		Gx=((ADC1_XYZ[2]*(12.21/4095))-6.2)*1000;
 		Gy=((ADC1_XYZ[1]*(12.21/4095))-6.2)*1000;
 		Gz=-(((ADC1_XYZ[0]*(12.21/4095))-6.2))*1000;
+		sprintf(buf, "x-> %d mg, y-> %d mg,z-> %d mg \r\n",Gx,Gy,Gz);
+		prvSendMessageUSART2(buf);
+}
+
+
+void verificar_comando(char comparar[50] ,char str[50], int tamanho_palavra, int comando[5]){
+	char buf[50];
+	int k=0;
+	int b=0;
+	for (k=0;k<tamanho_palavra;k++){
+		if (comparar[k]==str[k]){b++;}else{b=100;break;}
+	}
+	if(b==tamanho_palavra){
+		sprintf(buf, "%s.\r\n",comparar);
+		prvSendMessageUSART2(buf);
+		MyConfig.comand[0]=comando[0];MyConfig.comand[1]=comando[1];MyConfig.comand[2]=comando[2];MyConfig.comand[3]=comando[3];MyConfig.comand[4]=comando[4];
+	}
+}
+
+
+
+void verificar_comando_port(char str[50]){
+	char buf[50];
+	int k=0;
+	int b=0;
+	char comparar[10];
+	sprintf(comparar,"port");
+	for (k=0;k<4;k++){
+			if (comparar[k]==str[k]){b++;}else{b=100;break;}
+		}
+	if(b==4){
+		switch(str[4]){
+			case '1':
+				sprintf(buf, "port1.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=1;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			case '2':
+				sprintf(buf, "port2.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=2;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			case '3':
+				sprintf(buf, "port3.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=3;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			case '4':
+				sprintf(buf, "port4.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=4;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			case '5':
+				sprintf(buf, "port5.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=5;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			default:
+				break;
+		}
+		return;
+	}
 }

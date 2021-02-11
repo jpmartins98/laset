@@ -15,7 +15,7 @@ startup/%.o: ../startup/%.s
 	@echo 'Building file: $<'
 	@echo 'Invoking: MCU GCC Assembler'
 	@echo $(PWD)
-	arm-none-eabi-as -mcpu=cortex-m3 -mthumb -mfloat-abi=soft -I"/home/joao/Documentos/laset_freertos/StdPeriph_Driver/inc" -I"/home/joao/Documentos/laset_freertos/CMSIS/core" -I"/home/joao/Documentos/laset_freertos/inc" -I"/home/joao/Documentos/laset_freertos/CMSIS/device" -I"/home/joao/Documentos/laset_freertos/FreeRTOS/include" -g -o "$@" "$<"
+	arm-none-eabi-as -mcpu=cortex-m3 -mthumb -mfloat-abi=soft -I"C:/Users/Utilizador/laset/StdPeriph_Driver/inc" -I"C:/Users/Utilizador/laset/CMSIS/core" -I"C:/Users/Utilizador/laset/inc" -I"C:/Users/Utilizador/laset/CMSIS/device" -I"C:/Users/Utilizador/laset/FreeRTOS/include" -g -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 
