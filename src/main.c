@@ -34,6 +34,41 @@
 #define mainUSART_TASK_PRIORITY	( tskIDLE_PRIORITY + 1)
 #define mainLCD_TASK_PRIORITY	( tskIDLE_PRIORITY + 1)
 
+#define CMD_SET_READ_BIT 0x80
+#define CMD_SET_WRITE_BIT 0x7F
+#define REG_WHO_AM_I 0x0f //3A
+#define ENABLE_ALL_AXES 0x87
+#define REG_OFFSET_X 0x16
+#define REG_OFFSET_Y 0x17
+#define REG_OFFSET_Z 0x18
+#define REG_GAIN_X 0x19
+#define REG_GAIN_Y 0x1A
+#define REG_GAIN_Z 0x1B
+#define REG_CTRL_REG1 0x20
+#define REG_CTRL_REG2 0x21
+#define REG_CTRL_REG3 0x22
+#define REG_HP_FILTER_RESET 0x23
+#define REG_STATUS_REG 0x27
+#define REG_OUTX_L 0x28
+#define REG_OUTX_H 0x29
+#define REG_OUTY_L 0x2a
+#define REG_OUTY_H 0x2b
+#define REG_OUTZ_L 0x2c
+#define REG_OUTZ_H 0x2d
+#define REG_FF_WU_CFG 0x30
+#define REG_FF_WU_SRC 0x31
+#define REG_FF_WU_ACK 0x32
+#define REG_FF_WU_THS_L 0x34
+#define REG_FF_WU_THS_H 0x35
+#define REG_FF_WU_DURATION 0x36
+#define REG_DD_CFG 0x38
+#define REG_DD_SRC 0x39
+#define REG_DD_ACK 0x3a
+#define REG_DD_THSI_L 0x3c
+#define REG_DD_THSI_H 0x3d
+#define REG_DD_THSE_L 0x3e
+#define REG_DD_THSE_H 0x3f
+
 /*I2C*/
 //#define I2Cx_RCC        RCC_APB1Periph_I2C1
 //#define I2Cx            I2C1
@@ -48,6 +83,14 @@
 /* The rate at which the temperature is read. */
 #define mainTEMP_DELAY			( ( TickType_t ) 100 / portTICK_RATE_MS )
 
+typedef struct tridimensional_value
+{
+	float x_value;
+	float y_value;
+	float z_value;
+
+}tridimensional_value_t;
+tridimensional_value_t acel_value;
 
 typedef struct strConfig
 {
@@ -105,6 +148,10 @@ void read_acel(void);
 void verificar_comando(char comparar[50] ,char str[50], int tamanho_palavra, int comando[5]);
 void verificar_comando_port(char str[50]);
 void i2c_init(void);
+static void prvSetupSPI(void);
+uint8_t transfer_8b_SPI2_Master(uint8_t outByte);
+static void prvGetAcelValuesTask( );
+
 
 /* Simple LED toggle task. */
 static void prvFlashTask1( void *pvParameters );
@@ -167,10 +214,10 @@ int main( void )
     prvSetupEXTI1();
     prvSetupGPIO();
     //prvSetupADC();
-    DMA_Config();
-    ADC_Config();
-    i2c_init();
-
+    //DMA_Config();
+    //ADC_Config();
+    //i2c_init();
+    prvSetupSPI();
     xQueue = xQueueCreate( 10, sizeof( char ) );
 
     if( xQueue == 0 )
@@ -206,7 +253,7 @@ int main( void )
 	/* Create the tasks */
  	//xTaskCreate( prvLcdTask, "Lcd", configMINIMAL_STACK_SIZE, NULL, mainLCD_TASK_PRIORITY, &HandleTask1 );
  	xTaskCreate( prvFlashTask1, "Flash1", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask2 );
-    //xTaskCreate( prvTempTask, "Temp", configMINIMAL_STACK_SIZE+100, NULL, mainFLASH_TASK_PRIORITY, &HandleTask3 );
+    xTaskCreate(prvGetAcelValuesTask, "Temp", configMINIMAL_STACK_SIZE+100, NULL, mainFLASH_TASK_PRIORITY, &HandleTask3 );
  	//xTaskCreate( prvTickTask, "TickTask", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask4 );
  	xTaskCreate( prvSendTemp, "SendTemp", configMINIMAL_STACK_SIZE+200, NULL, mainFLASH_TASK_PRIORITY, &HandleTask5 );
 
@@ -244,7 +291,7 @@ static void prvSendTemp( void *pvParameters)
 					case 4:{
 						comando[0]=110; comando[1]=0; comando[2]=0; comando[3]=1;
 						verificar_comando("imu" , str, 3, comando);
-						if (MyConfig.comand[0]==110){read_acel();}
+						if (MyConfig.comand[0]==110){prvGetAcelValuesTask();}//read_acel();
 						break;
 					}
 					case 7:{
@@ -585,6 +632,8 @@ static void prvSetupGPIO( void )
     /* Enable GPIOB clock */
     RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOB , ENABLE );
     RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOA , ENABLE );
+    RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOC , ENABLE );
+    RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOD , ENABLE );
     RCC_APB2PeriphClockCmd( RCC_APB2Periph_AFIO, ENABLE);
 
     GPIO_InitStructure.GPIO_Pin =  GPIO_Pin_0 | GPIO_Pin_1;
@@ -629,8 +678,7 @@ static void prvSetupEXTI1( void )
 
 static void prvSetupUSART_INT( void )
 {
-	#define abb NVIC_InitStructure
-	NVIC_InitTypeDef abb;
+	NVIC_InitTypeDef NVIC_InitStructure;
 	/* Configura o Priority Group com 1 bit */
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
 	/* Interrup\E7\E3o global do USART2 com prioridade 0 sub-prioridade 2 */
@@ -864,16 +912,15 @@ void verificar_comando_port(char str[50]){
 void i2c_init()
 {
     // Initialization struct
-
     I2C_InitTypeDef I2C_InitStruct;
     GPIO_InitTypeDef GPIO_InitStruct;
 
     // Step 1: Initialize I2C
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
-    I2C_InitStruct.I2C_ClockSpeed = Runing_Config.I2C_clock_speed;//100000
+    I2C_InitStruct.I2C_ClockSpeed = Runing_Config.I2C_clock_speed;			//100000
     I2C_InitStruct.I2C_Mode = I2C_Mode_I2C;
     I2C_InitStruct.I2C_DutyCycle = I2C_DutyCycle_2;
-    I2C_InitStruct.I2C_OwnAddress1 = Runing_Config.I2C_Master_adress;//0x00
+    I2C_InitStruct.I2C_OwnAddress1 = Runing_Config.I2C_Master_adress;		//0x00
     I2C_InitStruct.I2C_Ack = I2C_Ack_Disable; //I2C_Ack_Enable; // disable acknowledge when reading (can be changed later on)
     I2C_InitStruct.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
     I2C_Init(I2C1, &I2C_InitStruct);
@@ -884,4 +931,131 @@ void i2c_init()
     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF_OD;
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_2MHz;
     GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+static void prvSetupSPI(void)
+{
+
+	uint8_t numRead = 0;
+
+	GPIO_InitTypeDef GPIO_InitStructure;
+
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI2, ENABLE);
+
+	SPI_InitTypeDef SPI_InitStructure;
+	SPI_InitStructure.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
+	SPI_InitStructure.SPI_Mode = SPI_Mode_Master;
+	SPI_InitStructure.SPI_DataSize = SPI_DataSize_8b;
+	SPI_InitStructure.SPI_CPOL = SPI_CPOL_High;
+	SPI_InitStructure.SPI_CPHA = SPI_CPHA_2Edge;
+	SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;
+	SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
+	SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;
+	SPI_Init(SPI2, &SPI_InitStructure);
+	SPI_Cmd(SPI2, ENABLE);
+
+    /* GPIOB (PB13)SPC clock */
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+    GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+    /* GPIOB (PB14)MISO serial data output */
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_14;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+    GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+    /* GPIOB (PB15)MOSI serial data input */
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_15;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+    GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+	/*GPIOD (PD2)SPI CS chip select */
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_Init(GPIOD, &GPIO_InitStructure);
+
+
+	GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+	transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_WHO_AM_I);
+	numRead = transfer_8b_SPI2_Master(0xFF); // value WHO_AM_I
+	GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+	GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+	transfer_8b_SPI2_Master(CMD_SET_WRITE_BIT & REG_CTRL_REG1);
+	transfer_8b_SPI2_Master(0x87); // set accel output x,y,z
+	GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+}
+
+uint8_t transfer_8b_SPI2_Master(uint8_t outByte)
+{
+    while(!SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_TXE));
+    SPI_I2S_SendData(SPI2, outByte); // send
+    while(!SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_RXNE));
+    return SPI_I2S_ReceiveData(SPI2); // read received
+}
+
+
+static void prvGetAcelValuesTask( )
+{
+
+	char buff[20];
+	uint16_t x_value_raw, y_value_raw, z_value_raw;
+	uint8_t l = 0, h = 0;
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTX_L);
+			l = transfer_8b_SPI2_Master(0xFF);
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTX_H);
+			h = transfer_8b_SPI2_Master(0xFF);
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			x_value_raw = h << 8 | l;
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTY_L);
+			l = transfer_8b_SPI2_Master(0xFF); // value WHO_AM_I
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTY_H);
+			h = transfer_8b_SPI2_Master(0xFF); // dummy data
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			y_value_raw = h << 8 | l;
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTZ_L);
+			l = transfer_8b_SPI2_Master(0xFF); // dummy data
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTZ_H);
+			h = transfer_8b_SPI2_Master(0xFF); // dummy data
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			z_value_raw = h << 8 | l;
+
+			//VALUE CONVERTION
+
+			acel_value.x_value = x_value_raw * 0.0009765625;
+			acel_value.y_value = y_value_raw * 0.0009765625;
+			acel_value.z_value = z_value_raw * 0.0009765625;
+
+			sprintf(buff, "x = %d\r\n", x_value_raw);
+			prvSendMessageUSART2(buff);
+
+			sprintf(buff, "y = %d\r\n", y_value_raw);
+			prvSendMessageUSART2(buff);
+
+			sprintf(buff, "z = %d\r\n", z_value_raw);
+			prvSendMessageUSART2(buff);
+
 }
