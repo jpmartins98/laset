@@ -34,6 +34,8 @@
 #define mainUSART_TASK_PRIORITY	( tskIDLE_PRIORITY + 1)
 #define mainLCD_TASK_PRIORITY	( tskIDLE_PRIORITY + 1)
 
+
+//                 spi test defines
 #define CMD_SET_READ_BIT 0x80
 #define CMD_SET_WRITE_BIT 0x7F
 #define REG_WHO_AM_I 0x0f //3A
@@ -69,28 +71,24 @@
 #define REG_DD_THSE_L 0x3e
 #define REG_DD_THSE_H 0x3f
 
-/*I2C*/
+/*I2C  config variables
 //#define I2Cx_RCC        RCC_APB1Periph_I2C1
 //#define I2Cx            I2C1
 //#define I2C_GPIO_RCC    RCC_APB2Periph_GPIOB
 //#define I2C_GPIO        GPIOB
 //#define I2C_PIN_SDA     GPIO_Pin_7
 //#define I2C_PIN_SCL     GPIO_Pin_8
+*/
 
+//           I2C  --   envio msg
+uint8_t address=0x1C; //endereço do slave
+uint8_t byte=0x01;//comando
 
 /* The rate at which the flash task toggles the LED. */
 #define mainFLASH_DELAY			( ( TickType_t ) 1000 / portTICK_RATE_MS )
 /* The rate at which the temperature is read. */
 #define mainTEMP_DELAY			( ( TickType_t ) 100 / portTICK_RATE_MS )
 
-typedef struct tridimensional_value
-{
-	float x_value;
-	float y_value;
-	float z_value;
-
-}tridimensional_value_t;
-tridimensional_value_t acel_value;
 
 typedef struct strConfig
 {
@@ -120,9 +118,7 @@ typedef struct strConfig
 }strConfig;
 strConfig MyConfig;
 strConfig Runing_Config;
-
-uint16_t ADC1_XYZ[3];
-int Gx,Gy,Gz;
+char RxData;
 
 typedef struct temptime
 {
@@ -130,7 +126,19 @@ typedef struct temptime
 	int32_t time;
 }temptime_t;
 
-char RxData;
+uint16_t ADC1_XYZ[3];
+int Gx,Gy,Gz;
+
+typedef struct tridimensional_value
+{
+	float x_value;
+	float y_value;
+	float z_value;
+
+}tridimensional_value_t;
+tridimensional_value_t acel_value;
+
+
 
 /* Configure RCC clocks */
 //static void prvSetupRCC( void );
@@ -151,6 +159,13 @@ void i2c_init(void);
 static void prvSetupSPI(void);
 uint8_t transfer_8b_SPI2_Master(uint8_t outByte);
 static void prvGetAcelValuesTask( );
+void ler_adc(uint8_t address, uint8_t byte);
+void start_imu();
+void i2c_send(uint8_t address, uint8_t byte);
+int i2c_received_int(uint8_t address, int size);
+void i2c_end_com();
+
+
 
 
 /* Simple LED toggle task. */
@@ -216,8 +231,8 @@ int main( void )
     //prvSetupADC();
     //DMA_Config();
     //ADC_Config();
-    //i2c_init();
-    prvSetupSPI();
+    i2c_init();
+    //prvSetupSPI();
     xQueue = xQueueCreate( 10, sizeof( char ) );
 
     if( xQueue == 0 )
@@ -252,8 +267,8 @@ int main( void )
 
 	/* Create the tasks */
  	//xTaskCreate( prvLcdTask, "Lcd", configMINIMAL_STACK_SIZE, NULL, mainLCD_TASK_PRIORITY, &HandleTask1 );
- 	xTaskCreate( prvFlashTask1, "Flash1", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask2 );
-    xTaskCreate(prvGetAcelValuesTask, "Temp", configMINIMAL_STACK_SIZE+100, NULL, mainFLASH_TASK_PRIORITY, &HandleTask3 );
+ 	//xTaskCreate( prvFlashTask1, "Flash1", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask2 );
+    //xTaskCreate(prvGetAcelValuesTask, "Temp", configMINIMAL_STACK_SIZE+100, NULL, mainFLASH_TASK_PRIORITY, &HandleTask3 );
  	//xTaskCreate( prvTickTask, "TickTask", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, &HandleTask4 );
  	xTaskCreate( prvSendTemp, "SendTemp", configMINIMAL_STACK_SIZE+200, NULL, mainFLASH_TASK_PRIORITY, &HandleTask5 );
 
@@ -276,6 +291,7 @@ static void prvSendTemp( void *pvParameters)
 	char receveid;
 	char str[50];
 	int i=0;
+	int beta=0;
 	MyConfig.comand[1]=0;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
 
 
@@ -291,7 +307,14 @@ static void prvSendTemp( void *pvParameters)
 					case 4:{
 						comando[0]=110; comando[1]=0; comando[2]=0; comando[3]=1;
 						verificar_comando("imu" , str, 3, comando);
-						if (MyConfig.comand[0]==110){prvGetAcelValuesTask();}//read_acel();
+						if (MyConfig.comand[0]==110){
+							//ler_adc(0x3A, 0x01);
+							if (beta==0){i2c_send(0x3A, 0x2A);i2c_end_com();}else{beta=1;}				//inicializar
+							i2c_send(0x3A, 0x01);int valor = i2c_received_int(0x3A, 1);i2c_end_com();if(valor>128){valor=valor-256;}valor=valor*1000/64;//obter valor
+							sprintf(buf,"x -> %d mg \r\n",valor);
+							prvSendMessageUSART2(buf);
+						}	//read_acel();     prvGetAcelValuesTask();
+						/*if (beta==0){start_imu();}else{beta=1;}*/
 						break;
 					}
 					case 7:{
@@ -559,6 +582,310 @@ static void prvTempTask( void *pvParameters )
 
 
 
+
+
+/*-----------------------------------------------------------*/
+
+/*-----------------------------------------------------------*/
+
+static void prvSendMessageUSART2(char *message)
+{
+uint16_t cont_aux=0;
+
+    while(cont_aux != strlen(message))
+    {
+        USART_SendData(USART2, (uint8_t) message[cont_aux]);
+        while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET)
+        {
+        }
+        cont_aux++;
+    }
+}
+
+
+
+
+
+
+
+void read_acel(void){
+		char buf[50];
+		while(DMA_GetFlagStatus(DMA1_FLAG_TC1) == RESET);
+		DMA_ClearFlag(DMA1_FLAG_TC1);
+		//while(ADC_GetFlagStatus(ADC_FLAG_STRT) == RESET);
+		//ADC_ClearFlag(ADC_FLAG_STRT);
+		Gx=((ADC1_XYZ[2]*(12.21/4095))-6.2)*1000;
+		Gy=((ADC1_XYZ[1]*(12.21/4095))-6.2)*1000;
+		Gz=-(((ADC1_XYZ[0]*(12.21/4095))-6.2))*1000;
+		sprintf(buf, "x-> %d mg, y-> %d mg,z-> %d mg \r\n",Gx,Gy,Gz);
+		prvSendMessageUSART2(buf);
+}
+
+
+void verificar_comando(char comparar[50] ,char str[50], int tamanho_palavra, int comando[5]){
+	char buf[50];
+	int k=0;
+	int b=0;
+	for (k=0;k<tamanho_palavra;k++){
+		if (comparar[k]==str[k]){b++;}else{b=100;break;}
+	}
+	if(b==tamanho_palavra){
+		sprintf(buf, "%s.\r\n",comparar);
+		prvSendMessageUSART2(buf);
+		MyConfig.comand[0]=comando[0];MyConfig.comand[1]=comando[1];MyConfig.comand[2]=comando[2];MyConfig.comand[3]=comando[3];MyConfig.comand[4]=comando[4];
+	}
+}
+
+
+
+void verificar_comando_port(char str[50]){
+	char buf[50];
+	int k=0;
+	int b=0;
+	char comparar[10];
+	sprintf(comparar,"port");
+	for (k=0;k<4;k++){
+			if (comparar[k]==str[k]){b++;}else{b=100;break;}
+		}
+	if(b==4){
+		switch(str[4]){
+			case '1':
+				sprintf(buf, "port1.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=1;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			case '2':
+				sprintf(buf, "port2.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=2;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			case '3':
+				sprintf(buf, "port3.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=3;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			case '4':
+				sprintf(buf, "port4.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=4;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			case '5':
+				sprintf(buf, "port5.\r\n");
+				prvSendMessageUSART2(buf);
+				MyConfig.comand[0]=7;MyConfig.comand[1]=5;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
+				break;
+
+			default:
+				break;
+		}
+		return;
+	}
+}
+
+
+
+
+uint8_t transfer_8b_SPI2_Master(uint8_t outByte)
+{
+    while(!SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_TXE));
+    SPI_I2S_SendData(SPI2, outByte); // send
+    while(!SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_RXNE));
+    return SPI_I2S_ReceiveData(SPI2); // read received
+}
+
+
+static void prvGetAcelValuesTask( )
+{
+
+	char buff[20];
+	uint16_t x_value_raw, y_value_raw, z_value_raw;
+	uint8_t l = 0, h = 0;
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTX_L);
+			l = transfer_8b_SPI2_Master(0xFF);
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTX_H);
+			h = transfer_8b_SPI2_Master(0xFF);
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			x_value_raw = h << 8 | l;
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTY_L);
+			l = transfer_8b_SPI2_Master(0xFF); // value WHO_AM_I
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTY_H);
+			h = transfer_8b_SPI2_Master(0xFF); // dummy data
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			y_value_raw = h << 8 | l;
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTZ_L);
+			l = transfer_8b_SPI2_Master(0xFF); // dummy data
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
+			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTZ_H);
+			h = transfer_8b_SPI2_Master(0xFF); // dummy data
+			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
+
+			z_value_raw = h << 8 | l;
+
+			//VALUE CONVERTION
+
+			acel_value.x_value = x_value_raw * 0.0009765625;
+			acel_value.y_value = y_value_raw * 0.0009765625;
+			acel_value.z_value = z_value_raw * 0.0009765625;
+
+			sprintf(buff, "x = %d\r\n", x_value_raw);
+			prvSendMessageUSART2(buff);
+
+			sprintf(buff, "y = %d\r\n", y_value_raw);
+			prvSendMessageUSART2(buff);
+
+			sprintf(buff, "z = %d\r\n", z_value_raw);
+			prvSendMessageUSART2(buff);
+
+}
+
+
+
+
+void start_imu(){
+	while(I2C_GetFlagStatus(I2C2, I2C_FLAG_BUSY));
+	I2C_GenerateSTART(I2C2, ENABLE);
+	while(!(I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT)));
+	I2C_Send7bitAddress(I2C2, 0x3A, I2C_Direction_Transmitter);
+	while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED));
+	I2C_SendData(I2C2,0x2A);
+	while(!I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+	I2C_SendData(I2C2, 0x01);
+	while(!I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+	I2C_GenerateSTOP(I2C2, ENABLE);
+	while(I2C_GetFlagStatus(I2C2,I2C_FLAG_STOPF));
+}
+
+void i2c_send(uint8_t address, uint8_t byt){
+	while(I2C_GetFlagStatus(I2C2, I2C_FLAG_BUSY));
+	I2C_GenerateSTART(I2C2, ENABLE);
+	while(!(I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT)));
+	I2C_Send7bitAddress(I2C2, address, I2C_Direction_Transmitter);
+	while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED));
+	I2C_SendData(I2C2,byte);
+	while(!I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+}
+
+
+
+int i2c_received_int(uint8_t address, int size){
+	int i2C_response_v[size];
+	int i2C_response=0;
+	I2C_GenerateSTART(I2C2,ENABLE);
+	while(!(I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT)));
+	I2C_Send7bitAddress(I2C2, address, I2C_Direction_Receiver);
+	while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED));
+	while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_BYTE_RECEIVED));
+
+	if (size==1){
+		i2C_response=I2C_ReceiveData(I2C2);
+		return i2C_response;
+	}
+	else{
+		int k=0;
+		i2C_response_v[0]=I2C_ReceiveData(I2C2);
+		for (k=1;k>=size;k++){
+			while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_BYTE_RECEIVED));
+			i2C_response_v[k]=I2C_ReceiveData(I2C2);
+			return i2C_response_v;
+		}
+	}
+	return i2C_response;
+}
+
+void i2c_end_com(){
+	I2C_AcknowledgeConfig(I2C2, DISABLE);
+	I2C_GenerateSTOP(I2C2, ENABLE);
+	while(I2C_GetFlagStatus(I2C2,I2C_FLAG_STOPF));
+}
+void ler_adc(uint8_t address, uint8_t byte){
+	int i2C_response;
+	char buf[50];
+	//send_data
+	while(I2C_GetFlagStatus(I2C2, I2C_FLAG_BUSY));
+	I2C_GenerateSTART(I2C2, ENABLE);
+	while(!(I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT)));
+	I2C_Send7bitAddress(I2C2, address, I2C_Direction_Transmitter);
+	while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED));
+	I2C_SendData(I2C2,byte);
+	while(!I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+	//received_data
+	I2C_GenerateSTART(I2C2,ENABLE);
+	while(!(I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT)));
+	I2C_Send7bitAddress(I2C2, address, I2C_Direction_Receiver);
+	while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED));
+	while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_BYTE_RECEIVED));
+	i2C_response=I2C_ReceiveData(I2C2);
+	I2C_AcknowledgeConfig(I2C2, DISABLE);
+	I2C_GenerateSTOP(I2C2, ENABLE);
+	while(I2C_GetFlagStatus(I2C2,I2C_FLAG_STOPF));
+	//tratamento de dados
+	if (i2C_response>128){i2C_response=i2C_response-256;}
+	i2C_response=i2C_response*1000/64;
+	sprintf(buf, "%d mg",i2C_response);
+	prvSendMessageUSART2(buf);
+}
+
+
+
+
+
+////////******************************************************************************/////////////////////
+/*
+void ler_condutividade()
+{
+	char c[10];
+	int i;
+	I2C_AcknowlegeConfig(I2C2,ENABLE);
+	I2C_GenerateSTART(I2C2,ENABLE);
+	 //Wait for I2C EV5.	// It means that the start condition has been correctly released	// on the I2C bus (the bus is free, no other devices is communicating))
+	while(!(I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_MODE_SELECT)));
+	// Send slave address
+	I2C_Send7bitAddress(I2C2,0x1C,I2C_Direction_Transmitter);
+	delay(1);
+	if(I2C_checkEvent(I2C2,I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED )==1){
+		I2C_SendData(I2C2,'R');
+		while(!I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_BYTE_TRANSMITTING));
+		I2C_GetFlagStatus(I2C2,ENABLE);
+		delay(900);
+		I2C_GenerateSTART(I2C2,ENABLE);
+		while(!(I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_MODE_SELECT)));
+		I2C_Send7bitAddress(I2C2,0x1C,I2C_Direction_Receiver);//I2C_Direction_Receiver
+		while(!(I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED)));
+		while(!(I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_BYTE_RECEIVED)));
+		for (i=0;i<=10;i++){
+			while(!(I2C_CheckEvent(I2C2,I2C_EVENT_MASTER_BYTE_RECEIVED)));
+			c[i]=(char*)I2C_ReceivedData(I2C2);
+		}
+		I2C_AcknowledgeConfig(I2C2,DISABLE);
+		I2C_GenerateSTOP(I2C2,ENABLE);
+		while(I2C_GetFlagStatus(I2C2,I2C_FLAG_STOPF));
+	}
+	else{
+		c[0]='x';
+	}
+}
+*/
+/*-----------------------------------------------------------*/
 static void prvSetupRCC( void )
 {
     /* RCC configuration - 72 MHz */
@@ -733,26 +1060,6 @@ GPIO_InitTypeDef GPIO_InitStructure;
     USART_Cmd(USART2, ENABLE);
  }
 
-/*-----------------------------------------------------------*/
-
-
-
-static void prvSendMessageUSART2(char *message)
-{
-uint16_t cont_aux=0;
-
-    while(cont_aux != strlen(message))
-    {
-        USART_SendData(USART2, (uint8_t) message[cont_aux]);
-        while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET)
-        {
-        }
-        cont_aux++;
-    }
-}
-/*-----------------------------------------------------------*/
-
-
 static void prvSetupADC( void )
 {
     ADC_InitTypeDef ADC_InitStructure;
@@ -777,8 +1084,6 @@ static void prvSetupADC( void )
     while(ADC_GetCalibrationStatus(ADC1));
 
 }
-/*-----------------------------------------------------------*/
-
 void DMA_Config(void)
 {
 		 //DMA_1
@@ -801,6 +1106,7 @@ void DMA_Config(void)
 		 DMA_Init(DMA1_Channel1, &DMA_InitStructure);
 		 DMA_Cmd(DMA1_Channel1, ENABLE);
 }
+
 void ADC_Config(void){
 
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);
@@ -830,86 +1136,11 @@ void ADC_Config(void){
 		ADC_SoftwareStartConvCmd ( ADC1 , ENABLE );
 }
 
-void read_acel(void){
-		char buf[50];
-		while(DMA_GetFlagStatus(DMA1_FLAG_TC1) == RESET);
-		DMA_ClearFlag(DMA1_FLAG_TC1);
-		//while(ADC_GetFlagStatus(ADC_FLAG_STRT) == RESET);
-		//ADC_ClearFlag(ADC_FLAG_STRT);
-		Gx=((ADC1_XYZ[2]*(12.21/4095))-6.2)*1000;
-		Gy=((ADC1_XYZ[1]*(12.21/4095))-6.2)*1000;
-		Gz=-(((ADC1_XYZ[0]*(12.21/4095))-6.2))*1000;
-		sprintf(buf, "x-> %d mg, y-> %d mg,z-> %d mg \r\n",Gx,Gy,Gz);
-		prvSendMessageUSART2(buf);
-}
-
-
-void verificar_comando(char comparar[50] ,char str[50], int tamanho_palavra, int comando[5]){
-	char buf[50];
-	int k=0;
-	int b=0;
-	for (k=0;k<tamanho_palavra;k++){
-		if (comparar[k]==str[k]){b++;}else{b=100;break;}
-	}
-	if(b==tamanho_palavra){
-		sprintf(buf, "%s.\r\n",comparar);
-		prvSendMessageUSART2(buf);
-		MyConfig.comand[0]=comando[0];MyConfig.comand[1]=comando[1];MyConfig.comand[2]=comando[2];MyConfig.comand[3]=comando[3];MyConfig.comand[4]=comando[4];
-	}
-}
 
 
 
-void verificar_comando_port(char str[50]){
-	char buf[50];
-	int k=0;
-	int b=0;
-	char comparar[10];
-	sprintf(comparar,"port");
-	for (k=0;k<4;k++){
-			if (comparar[k]==str[k]){b++;}else{b=100;break;}
-		}
-	if(b==4){
-		switch(str[4]){
-			case '1':
-				sprintf(buf, "port1.\r\n");
-				prvSendMessageUSART2(buf);
-				MyConfig.comand[0]=7;MyConfig.comand[1]=1;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
-				break;
 
-			case '2':
-				sprintf(buf, "port2.\r\n");
-				prvSendMessageUSART2(buf);
-				MyConfig.comand[0]=7;MyConfig.comand[1]=2;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
-				break;
-
-			case '3':
-				sprintf(buf, "port3.\r\n");
-				prvSendMessageUSART2(buf);
-				MyConfig.comand[0]=7;MyConfig.comand[1]=3;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
-				break;
-
-			case '4':
-				sprintf(buf, "port4.\r\n");
-				prvSendMessageUSART2(buf);
-				MyConfig.comand[0]=7;MyConfig.comand[1]=4;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
-				break;
-
-			case '5':
-				sprintf(buf, "port5.\r\n");
-				prvSendMessageUSART2(buf);
-				MyConfig.comand[0]=7;MyConfig.comand[1]=5;MyConfig.comand[2]=0;MyConfig.comand[3]=0;
-				break;
-
-			default:
-				break;
-		}
-		return;
-	}
-}
-
-
-void i2c_init()
+/*void i2c_init()
 {
     // Initialization struct
     I2C_InitTypeDef I2C_InitStruct;
@@ -931,7 +1162,35 @@ void i2c_init()
     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF_OD;
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_2MHz;
     GPIO_Init(GPIOB, &GPIO_InitStruct);
+}*/
+
+
+void i2c_init()
+{
+    // Initialization struct
+    I2C_InitTypeDef I2C_InitStruct;
+    GPIO_InitTypeDef GPIO_InitStruct;
+
+    // Step 1: Initialize I2C
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C2, ENABLE);//I2Cx_RCC->RCC_APB1Periph_I2C2
+    I2C_InitStruct.I2C_ClockSpeed = 800;	//adcmax=400
+    I2C_InitStruct.I2C_Mode = I2C_Mode_I2C;
+    I2C_InitStruct.I2C_DutyCycle = I2C_DutyCycle_2;
+    I2C_InitStruct.I2C_OwnAddress1 = 1;
+    I2C_InitStruct.I2C_Ack = I2C_Ack_Enable;
+    I2C_InitStruct.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
+    I2C_Init(I2C2, &I2C_InitStruct);//I2Cx->I2C2
+    I2C_Cmd(I2C2, ENABLE);//I2Cx->I2C2
+
+    // Step 2: Initialize GPIO as open drain alternate function
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);//RCC_APB2Periph_GPIOB
+    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11;//pb10/pb11
+    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF_OD;
+    GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;//2MHz
+    GPIO_Init(GPIOB, &GPIO_InitStruct);//gpiob
 }
+
+
 
 static void prvSetupSPI(void)
 {
@@ -991,71 +1250,4 @@ static void prvSetupSPI(void)
 
 }
 
-uint8_t transfer_8b_SPI2_Master(uint8_t outByte)
-{
-    while(!SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_TXE));
-    SPI_I2S_SendData(SPI2, outByte); // send
-    while(!SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_RXNE));
-    return SPI_I2S_ReceiveData(SPI2); // read received
-}
 
-
-static void prvGetAcelValuesTask( )
-{
-
-	char buff[20];
-	uint16_t x_value_raw, y_value_raw, z_value_raw;
-	uint8_t l = 0, h = 0;
-
-			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
-			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTX_L);
-			l = transfer_8b_SPI2_Master(0xFF);
-			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
-
-			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
-			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTX_H);
-			h = transfer_8b_SPI2_Master(0xFF);
-			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
-
-			x_value_raw = h << 8 | l;
-
-			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
-			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTY_L);
-			l = transfer_8b_SPI2_Master(0xFF); // value WHO_AM_I
-			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
-
-			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
-			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTY_H);
-			h = transfer_8b_SPI2_Master(0xFF); // dummy data
-			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
-
-			y_value_raw = h << 8 | l;
-
-			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
-			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTZ_L);
-			l = transfer_8b_SPI2_Master(0xFF); // dummy data
-			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
-
-			GPIO_ResetBits(GPIOD, GPIO_Pin_2); // slave select (low)
-			transfer_8b_SPI2_Master(CMD_SET_READ_BIT | REG_OUTZ_H);
-			h = transfer_8b_SPI2_Master(0xFF); // dummy data
-			GPIO_SetBits(GPIOD, GPIO_Pin_2); // slave deselect (high)
-
-			z_value_raw = h << 8 | l;
-
-			//VALUE CONVERTION
-
-			acel_value.x_value = x_value_raw * 0.0009765625;
-			acel_value.y_value = y_value_raw * 0.0009765625;
-			acel_value.z_value = z_value_raw * 0.0009765625;
-
-			sprintf(buff, "x = %d\r\n", x_value_raw);
-			prvSendMessageUSART2(buff);
-
-			sprintf(buff, "y = %d\r\n", y_value_raw);
-			prvSendMessageUSART2(buff);
-
-			sprintf(buff, "z = %d\r\n", z_value_raw);
-			prvSendMessageUSART2(buff);
-
-}
