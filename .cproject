@@ -148,9 +148,9 @@
 								<inputType id="cdt.managedbuild.tool.gnu.assembler.input.1254771628" superClass="cdt.managedbuild.tool.gnu.assembler.input"/>
 								<inputType id="fr.ac6.managedbuild.tool.gnu.cross.assembler.input.1212150359" superClass="fr.ac6.managedbuild.tool.gnu.cross.assembler.input"/>
 							</tool>
-							<tool id="fr.ac6.managedbuild.tool.gnu.cross.assembler.exe.release.529220917" name="MCU GCC Assembler" superClass="fr.ac6.managedbuild.tool.gnu.cross.assembler.exe.release">
-								<inputType id="cdt.managedbuild.tool.gnu.assembler.input.782070954" superClass="cdt.managedbuild.tool.gnu.assembler.input"/>
-								<inputType id="fr.ac6.managedbuild.tool.gnu.cross.assembler.input.1264410413" superClass="fr.ac6.managedbuild.tool.gnu.cross.assembler.input"/>
+							<tool id="fr.ac6.managedbuild.tool.gnu.cross.assembler.exe.release.1544831437" name="MCU GCC Assembler" superClass="fr.ac6.managedbuild.tool.gnu.cross.assembler.exe.release">
+								<inputType id="cdt.managedbuild.tool.gnu.assembler.input.1469863640" superClass="cdt.managedbuild.tool.gnu.assembler.input"/>
+								<inputType id="fr.ac6.managedbuild.tool.gnu.cross.assembler.input.1637949594" superClass="fr.ac6.managedbuild.tool.gnu.cross.assembler.input"/>
 							</tool>
 						</toolChain>
 					</folderInfo>
@@ -168,23 +168,16 @@
 		</cconfiguration>
 	</storageModule>
 	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-		<project id="3SO.fr.ac6.managedbuild.target.gnu.cross.exe.754065943" name="Executable" projectType="fr.ac6.managedbuild.target.gnu.cross.exe"/>
+		<project id="tt1.fr.ac6.managedbuild.target.gnu.cross.exe.518524307" name="Executable" projectType="fr.ac6.managedbuild.target.gnu.cross.exe"/>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="refreshScope"/>
-	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
 	<storageModule moduleId="scannerConfiguration">
 		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		<scannerConfigBuildInfo instanceId="fr.ac6.managedbuild.config.gnu.cross.exe.release.399887698;fr.ac6.managedbuild.config.gnu.cross.exe.release.399887698.;fr.ac6.managedbuild.tool.gnu.cross.c.compiler.1003596202;fr.ac6.managedbuild.tool.gnu.cross.c.compiler.input.c.2113708719">
+		<scannerConfigBuildInfo instanceId="fr.ac6.managedbuild.config.gnu.cross.exe.debug.1160313760;fr.ac6.managedbuild.config.gnu.cross.exe.debug.1160313760.;fr.ac6.managedbuild.tool.gnu.cross.c.compiler.562216042;fr.ac6.managedbuild.tool.gnu.cross.c.compiler.input.c.1033730829">
 			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="fr.ac6.managedbuild.config.gnu.cross.exe.release.399887698;fr.ac6.managedbuild.config.gnu.cross.exe.release.399887698.;fr.ac6.managedbuild.tool.gnu.cross.cpp.compiler.831116347;fr.ac6.managedbuild.tool.gnu.cross.cpp.compiler.input.cpp.243381087">
-			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="fr.ac6.managedbuild.config.gnu.cross.exe.debug.204236382;fr.ac6.managedbuild.config.gnu.cross.exe.debug.204236382.;fr.ac6.managedbuild.tool.gnu.cross.c.compiler.1998194683;fr.ac6.managedbuild.tool.gnu.cross.c.compiler.input.c.1622858428">
-			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="fr.ac6.managedbuild.config.gnu.cross.exe.debug.204236382;fr.ac6.managedbuild.config.gnu.cross.exe.debug.204236382.;fr.ac6.managedbuild.tool.gnu.cross.cpp.compiler.1636299157;fr.ac6.managedbuild.tool.gnu.cross.cpp.compiler.input.cpp.1326661368">
+		<scannerConfigBuildInfo instanceId="fr.ac6.managedbuild.config.gnu.cross.exe.release.499863147;fr.ac6.managedbuild.config.gnu.cross.exe.release.499863147.;fr.ac6.managedbuild.tool.gnu.cross.c.compiler.67899029;fr.ac6.managedbuild.tool.gnu.cross.c.compiler.input.c.1824947359">
 			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
 	</storageModule>

@@ -18,7 +18,16 @@
   * <h2><center>&copy; COPYRIGHT 2011 STMicroelectronics</center></h2>
   ******************************************************************************
   */ 
+#include <string.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <lcd.h>
 
+/* Scheduler includes. */
+#include "FreeRTOS.h"
+#include "task.h"
+#include "lcd.h"
+#include "queue.h"
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __STM32F10x_IT_H
 #define __STM32F10x_IT_H
@@ -29,10 +38,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f10x.h"
-#include "FreeRTOS.h"
-#include "semphr.h"
-#include "queue.h"
-
 
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/

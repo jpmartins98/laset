@@ -1,14 +1,13 @@
 /*
- * stm32f1xx_it.c
+  stm32f1xx_it.c
  *
  *  Created on: Jul 12, 2016
  *  Autor:
  */
-
-
 #include "stm32f10x_it.h"
 
-extern QueueHandle_t xQueue, xTickQueue;
+
+extern QueueHandle_t xQueue;
 extern char RxData;
 
 
@@ -214,12 +213,7 @@ void EXTI0_IRQHandler(void)
 *******************************************************************************/
 void EXTI1_IRQHandler(void)
 {
-	static BaseType_t pxHigherPriorityTaskWoken;
-	TickType_t ticks = xTaskGetTickCountFromISR();
-	xQueueSendToBackFromISR( xTickQueue, &ticks, &pxHigherPriorityTaskWoken );
-	if( pxHigherPriorityTaskWoken == pdTRUE )
-				taskYIELD(); /* forces the context change */
-	EXTI_ClearITPendingBit(EXTI_Line1);
+
 }
 
 /*******************************************************************************
