@@ -262,7 +262,7 @@ static void prvFlashTask1( void *pvParameters )
 	//size_t RTC_Counter;
     for( ;; )
 	{
-    	vTaskSuspend(NULL);
+    	//vTaskSuspend(NULL);
 		/* Block 1 second. */
     	//vTaskDelayUntil( &xLastExecutionTime, 1000 / portTICK_RATE_MS ); // ciclo de 1 s em 1s
 		vTaskDelay( ( TickType_t ) 1000 / portTICK_PERIOD_MS  );	// ciclo de 1 s + ciclo da task em 1s + ciclo da task
@@ -344,7 +344,7 @@ static void prvSendTemp( void *pvParameters)
 						case 12:{
 							comando[0]=1; comando[1]=0; comando[2]=0; comando[3]=0;
 							verificar_comando("update_time" , str, 11, comando);
-							vTaskResume(HandleTask1);
+							//vTaskResume(HandleTask1);
 							break;
 						}
 						case 14:{
