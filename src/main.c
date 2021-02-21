@@ -65,15 +65,16 @@ typedef struct strConfig
 	int I2C_clock_speed;
 	int I2C_Slave_adress[4];
 	int I2C_Master_adress;
+	int date[6];
 }strConfig;
 strConfig MyConfig;
 strConfig Runing_Config;
 //////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////comented struct and defines///////////////////////////////////////////////////////////
 /* 	The rate at which the flash task toggles the LED. */
-//#define mainFLASH_DELAY			( ( TickType_t ) 1000 / portTICK_RATE_MS )
+#define mainFLASH_DELAY			( ( TickType_t ) 1000 / portTICK_RATE_MS )
 /* 	The rate at which the temperature is read. */
-//#define mainTEMP_DELAY			( ( TickType_t ) 100 / portTICK_RATE_MS )
+#define mainTEMP_DELAY			( ( TickType_t ) 100 / portTICK_RATE_MS )
 
 
 //                 spi test defines
@@ -150,6 +151,7 @@ tridimensional_value_t acel_value;*/
 /********** tasks**********/
 static void prvFlashTask1( void *pvParameters );
 static void prvSendTemp( void *pvParameters);
+static void prvSystemchange( void *pvParameters);
 
 /********** gpio init**********/
 static void prvSetupGPIO( void );
@@ -163,6 +165,9 @@ static void prvSetupRTC(void);			//rtc
 static void prvSetupUSART2( void );
 static void prvSendMessageUSART2(char *message);
 static void prvSetupUSART_INT( void );
+
+/*********interrupt tim3 ***********/
+static void prvSetupTIM3_INT( void );
 
 /*********functions comandos***********/
 void verificar_comando_port(char str[50]);
@@ -202,13 +207,16 @@ unsigned long bsd_calc_pressure(uint32_t d1,uint32_t d2);
 
 /*********extern interrput 1***********/
 //static void prvSetupEXTI1( void )
+
+/*********date control***********/
+void verify_date(void);
 ////////////////////////////////////////////////////////////end declare functions//////////////////////////////////////////////////////////////////
 
 
 
 
 /* Task handle variable. */
-TaskHandle_t HandleTask1;TaskHandle_t HandleTask2;
+TaskHandle_t HandleTask1;TaskHandle_t HandleTask2, HandleTask3;
 /* Queue handle variable. */
 QueueHandle_t xQueue; /* Global variable. */
 
@@ -225,25 +233,27 @@ int main( void )
 	Runing_Config.leds=0;									//led off
 	Runing_Config.freq_leds=1/60/60/2; 						// quando led on freq uma vez de 2 em duas horas
 	Runing_Config.time_on_off_leds=1/60;					//quando led on 1 min on por 60 min off
-    prvSetupRCC();		//relogio 72mhz
-    //prvSetupRCCHSI();  		//relogio do stm 64mhz
+    //prvSetupRCC();		//relogio 72mhz
+    prvSetupRCCHSI();  		//relogio do stm 64mhz
     prvSetupRTC();
 	prvSetupUSART2();
     prvSetupUSART_INT();
     //prvSetupEXTI1();
     prvSetupGPIO();
+    i2c_init();
+    prvSetupTIM3_INT();
+    char buf[50];sprintf(buf, "tim init");prvSendMessageUSART2(buf);
     RTC_SetCounter(1);
 
-    i2c_init();
 
     /* queue */
     xQueue = xQueueCreate( 100, sizeof( char ) );
     if( xQueue == 0 )  {    }
     else { }
 	/* Create the tasks */
- 	xTaskCreate( prvFlashTask1, "Flash1", configMINIMAL_STACK_SIZE+500, NULL, main_TASK_PRIORITY, &HandleTask1 );
- 	xTaskCreate( prvSendTemp, "SendTemp", configMINIMAL_STACK_SIZE+200, NULL, main_TASK_PRIORITY, &HandleTask2 );
-
+ 	xTaskCreate( prvFlashTask1, "Flash1", configMINIMAL_STACK_SIZE+100, NULL, main_TASK_PRIORITY, &HandleTask1 );
+ 	xTaskCreate( prvSendTemp, "SendTemp", configMINIMAL_STACK_SIZE+100, NULL, main_TASK_PRIORITY, &HandleTask2 );
+ 	xTaskCreate( prvSystemchange, "systemchange", configMINIMAL_STACK_SIZE+100, NULL, main_TASK_PRIORITY, &HandleTask3);
 	/* Start the scheduler. */
 	vTaskStartScheduler();
 
@@ -262,7 +272,7 @@ static void prvFlashTask1( void *pvParameters )
 	//size_t RTC_Counter;
     for( ;; )
 	{
-    	//vTaskSuspend(NULL);
+    	vTaskSuspend(NULL);
 		/* Block 1 second. */
     	//vTaskDelayUntil( &xLastExecutionTime, 1000 / portTICK_RATE_MS ); // ciclo de 1 s em 1s
 		vTaskDelay( ( TickType_t ) 1000 / portTICK_PERIOD_MS  );	// ciclo de 1 s + ciclo da task em 1s + ciclo da task
@@ -273,6 +283,7 @@ static void prvFlashTask1( void *pvParameters )
 		size_t RTC_Counter = RTC_GetCounter();
 		sprintf(buff,"%zu",RTC_Counter);
 		prvSendMessageUSART2(buff);
+		vTaskResume(HandleTask2);
 
 
         /* Toggle the LED */
@@ -307,16 +318,19 @@ static void prvSendTemp( void *pvParameters)
 	//char str[6];
 	//int i=0;
 
-	int comando[5];
-	char buf[100];
-	char receveid;
-	char str[50];
-	int i=0;
-	int beta=0;
+	int comando[5];		//comando a aplicar a estrutura
+	char buf[100];		//word to print
+	char receveid;		//received char
+	char str[50];		//received word
+	int i=0;			//word size geral
+	int beta=0; 		//imu ver se ja foi iniciado
+	int k=0;			//update_time	nº de words
+	int j=0;			//update_time - word size
 	MyConfig.comand[1]=0;MyConfig.comand[2]=0;MyConfig.comand[3]=0;MyConfig.comand[4]=0;
-	sprintf(buf, "linha de comando");prvSendMessageUSART2(buf);
+	sprintf(buf, "linha de comando\r");prvSendMessageUSART2(buf);
 	for(;;)
 	{
+		//if((GPIO_ReadInputDataBit(GPIOB,GPIO_Pin_1))){GPIO_WriteBit(GPIOB, GPIO_Pin_1, Bit_RESET);sprintf(buf,"interrupt");prvSendMessageUSART2(buf);}
 		if( uxQueueMessagesWaiting(xQueue) > 0){
 			xQueueReceive(xQueue, &receveid, ( TickType_t ) portMAX_DELAY);
 			str[i]=receveid;
@@ -344,7 +358,25 @@ static void prvSendTemp( void *pvParameters)
 						case 12:{
 							comando[0]=1; comando[1]=0; comando[2]=0; comando[3]=0;
 							verificar_comando("update_time" , str, 11, comando);
-							//vTaskResume(HandleTask1);
+							comando[0]=0; comando[1]=0; comando[2]=0; comando[3]=0;
+							if (MyConfig.comand[0]==1 && MyConfig.comand[3]==0){
+								for(k=0;k<=5;k++){
+									while (str[j-1]!='\r'){
+										//write the word to a vector
+										while( uxQueueMessagesWaiting(xQueue) == 0){}
+										xQueueReceive(xQueue, &receveid, ( TickType_t ) portMAX_DELAY);
+										str[j]=receveid;
+										j++;
+									}
+									//read the word
+									j=0;
+									verificar_comando("cancel" , str, 6, comando);
+									if (MyConfig.comand[0]==0){break;}
+									MyConfig.date[k]=atoi(str);
+									sprintf(buf," %d:",MyConfig.date[k]);prvSendMessageUSART2(buf);
+								}
+							}
+							if (MyConfig.comand[0]==1){verify_date();}
 							break;
 						}
 						case 14:{
@@ -469,6 +501,24 @@ static void prvSendTemp( void *pvParameters)
 		}
 	}
 }
+
+
+static void prvSystemchange( void *pvParameters )
+{
+	char buf[50];
+    for( ;; )
+	{
+    	vTaskSuspend(NULL);
+    	sprintf(buf, "system_change_task");prvSendMessageUSART2(buf);
+    	if(MyConfig.comand[3]==1){ //atualização data
+    		if (MyConfig.comand[0]==1){
+    			Runing_Config.date[0]=MyConfig.date[0];Runing_Config.date[1]=MyConfig.date[1];Runing_Config.date[2]=MyConfig.date[2];Runing_Config.date[3]=MyConfig.date[3];Runing_Config.date[4]=MyConfig.date[4];Runing_Config.date[5]=MyConfig.date[5];
+    			sprintf(buf, "\t  %d/%d/%d  -  %d:%d:%d",Runing_Config.date[0],Runing_Config.date[1],Runing_Config.date[2],Runing_Config.date[3],Runing_Config.date[4],Runing_Config.date[5]);prvSendMessageUSART2(buf);
+    		}
+    	}
+    	//atualização freq para cada porto ... alteração do baudrte ...
+	}
+}
 /*-------------------------------comandos_functions----------------------------*/
 
 void verificar_comando(char comparar[50] ,char str[50], int tamanho_palavra, int comando[5]){
@@ -534,6 +584,46 @@ void verificar_comando_port(char str[50]){
 		}
 		return;
 	}
+}
+
+void verify_date(void){
+	int dias_max;
+	char buf[50];
+	if (MyConfig.date[0]>=1970 && MyConfig.date[1]>=1 && MyConfig.date[1]<=12 && MyConfig.date[3]>=0 && MyConfig.date[3]<=23 && MyConfig.date[4]>=0 && MyConfig.date[4]<=59 && MyConfig.date[5]>=0 && MyConfig.date[5]<=59){
+		if(MyConfig.date[1]==2){
+			if(MyConfig.date[0]%4==0){
+				if(MyConfig.date[0]%100!=0){
+					dias_max=29;
+				}else{
+					if(MyConfig.date[0]%400==0){
+						dias_max=29;
+					}else{dias_max=28;}
+				}
+			}else{dias_max=28;}
+			if( MyConfig.date[2]>=1 && MyConfig.date[2]<=dias_max){
+				MyConfig.comand[0]=1;MyConfig.comand[3]=1;	//valor validado e prestes a ser efetuado o update
+			}else{MyConfig.comand[0]=0;MyConfig.comand[3]=100;sprintf(buf, "\t erro\r");prvSendMessageUSART2(buf);}
+		}
+
+
+		if(MyConfig.date[1]==1||MyConfig.date[1]==3||MyConfig.date[1]==5||MyConfig.date[1]==7||MyConfig.date[1]==8||MyConfig.date[1]==10||MyConfig.date[1]==12){
+			dias_max=31;
+			if( MyConfig.date[2]>=1 && MyConfig.date[2]<=dias_max){
+				MyConfig.comand[0]=1;MyConfig.comand[3]=1;	//valor validado e prestes a ser efetuado o update
+			}else{MyConfig.comand[0]=0;MyConfig.comand[3]=100;sprintf(buf, "\t erro \r");prvSendMessageUSART2(buf);}
+
+
+		}
+
+		if(MyConfig.date[1]==4||MyConfig.date[1]==6||MyConfig.date[1]==9||MyConfig.date[1]==11){
+			dias_max=30;
+			if( MyConfig.date[2]>=1 && MyConfig.date[2]<=dias_max){
+				MyConfig.comand[0]=1;MyConfig.comand[3]=1;	//valor validado e prestes a ser efetuado o update
+			}else{MyConfig.comand[0]=0;MyConfig.comand[3]=100;sprintf(buf, "\t erro \r");prvSendMessageUSART2(buf); }
+
+		}
+	}else{MyConfig.comand[0]=0;MyConfig.comand[3]=100;sprintf(buf, "\t erro \r");prvSendMessageUSART2(buf);}
+	vTaskResume(HandleTask3);
 }
 ///////////////////////////////////////____________________i2c_functions_____________////////////////////////
 
@@ -1103,7 +1193,7 @@ uint16_t cont_aux=0;
 
 
 ///////////////////////////////////////////////////////////adc//////////////////////////////////////////////////
-static void prvSetupADC( void )
+/*static void prvSetupADC( void )
 {
     ADC_InitTypeDef ADC_InitStructure;
 
@@ -1126,7 +1216,7 @@ static void prvSetupADC( void )
     ADC_StartCalibration(ADC1);
     while(ADC_GetCalibrationStatus(ADC1));
 
-}
+}*/
 /*void DMA_Config(void)
 {
 		 //DMA_1
@@ -1376,3 +1466,31 @@ static void prvFlashTask1( void *pvParameters )
 
     }
 }*/
+static void prvSetupTIM3_INT( void )
+{
+	// Configura¸c˜ao do TIM3 contador crescente
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
+	TIM_InternalClockConfig(TIM3);
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+	//da erro nas 4 linhas a baixo n sei pq mas corre no outro projeto onde faço os testes nem me aparece erro
+	TIM_TimeBaseStructure.TIM_Period = 32000-1; 		//freq 2000hz para 64 hz
+	TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;
+	TIM_TimeBaseStructure.TIM_Prescaler = 60000-1;		//30s em 30s para 64 hz
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
+	TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure);
+	TIM_Cmd(TIM3, ENABLE);
+
+	NVIC_InitTypeDef NVIC_InitStructure;
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
+	//prioridade interrupção temporizador
+	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0; //troca de prioridade
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;			//troca de sub-prioridade
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+	TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE );
+
+}
+
+
+

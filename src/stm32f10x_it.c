@@ -8,6 +8,7 @@
 
 
 extern QueueHandle_t xQueue;
+extern TaskHandle_t HandleTask1, HandleTask2;
 extern char RxData;
 
 
@@ -460,7 +461,13 @@ void TIM2_IRQHandler(void)
 *******************************************************************************/
 void TIM3_IRQHandler(void)
 {
+	static BaseType_t pxHigherPriorityTaskWoken;
+	xTaskResumeFromISR(HandleTask1);
+	if( pxHigherPriorityTaskWoken == pdTRUE )
+				taskYIELD(); /* forces the context change */
+		TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
 }
+
 
 /*******************************************************************************
 * Function Name  : TIM4_IRQHandler
