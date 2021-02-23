@@ -67,8 +67,15 @@ typedef struct strConfig
 	int I2C_Master_adress;
 	int date[6];
 }strConfig;
-strConfig MyConfig;
+strConfig MyConfig; //configuração para validar e
 strConfig Runing_Config;
+
+typedef struct datestm
+{
+	int year, month, day, minute, hour , second;
+}date_t;
+date_t actual_date;
+RCC_ClocksTypeDef ClksFreq;
 //////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////comented struct and defines///////////////////////////////////////////////////////////
 /* 	The rate at which the flash task toggles the LED. */
@@ -152,7 +159,7 @@ tridimensional_value_t acel_value;*/
 static void prvFlashTask1( void *pvParameters );
 static void prvSendTemp( void *pvParameters);
 static void prvSystemchange( void *pvParameters);
-
+//static void pvrdate( void *pvParameters );
 /********** gpio init**********/
 static void prvSetupGPIO( void );
 
@@ -210,13 +217,15 @@ unsigned long bsd_calc_pressure(uint32_t d1,uint32_t d2);
 
 /*********date control***********/
 void verify_date(void);
+void calc_date();
+void correct_date();
 ////////////////////////////////////////////////////////////end declare functions//////////////////////////////////////////////////////////////////
 
 
 
 
 /* Task handle variable. */
-TaskHandle_t HandleTask1;TaskHandle_t HandleTask2, HandleTask3;
+TaskHandle_t HandleTask1;TaskHandle_t HandleTask2, HandleTask3, HandleTask4;
 /* Queue handle variable. */
 QueueHandle_t xQueue; /* Global variable. */
 
@@ -226,13 +235,14 @@ int main( void )
     //prvSetupRCC();
 	bsd.address=0x77,bsd.reset=0x1E,bsd.CMD_PROM_RD = 0xA0, bsd.convert_d1=0x48,bsd.convert_d2=0x58, bsd.read_adc=0x00; //bsd comands
 	Runing_Config.I2C_clock_speed=100000;
-	Runing_Config.I2C_Slave_adress[1]=0x08;Runing_Config.I2C_Slave_adress[1]=0;Runing_Config.I2C_Slave_adress[2]=0;Runing_Config.I2C_Slave_adress[3]=0;
+	Runing_Config.I2C_Slave_adress[0]=0x08;Runing_Config.I2C_Slave_adress[1]=0;Runing_Config.I2C_Slave_adress[2]=0;Runing_Config.I2C_Slave_adress[3]=0; //i2c
 	Runing_Config.I2C_Master_adress=0x00;
 	Runing_Config.modo=3;									//ctd em sleep
 	Runing_Config.freq_datalog=1/60;						//quando em modo continuo ou condicional freq minuto a minuto
 	Runing_Config.leds=0;									//led off
 	Runing_Config.freq_leds=1/60/60/2; 						// quando led on freq uma vez de 2 em duas horas
 	Runing_Config.time_on_off_leds=1/60;					//quando led on 1 min on por 60 min off
+	Runing_Config.date[0]=2021;Runing_Config.date[1]=1;Runing_Config.date[2]=1;Runing_Config.date[3]=0;Runing_Config.date[4]=0;Runing_Config.date[5]=0;
     //prvSetupRCC();		//relogio 72mhz
     prvSetupRCCHSI();  		//relogio do stm 64mhz
     prvSetupRTC();
@@ -254,6 +264,7 @@ int main( void )
  	xTaskCreate( prvFlashTask1, "Flash1", configMINIMAL_STACK_SIZE+100, NULL, main_TASK_PRIORITY, &HandleTask1 );
  	xTaskCreate( prvSendTemp, "SendTemp", configMINIMAL_STACK_SIZE+100, NULL, main_TASK_PRIORITY, &HandleTask2 );
  	xTaskCreate( prvSystemchange, "systemchange", configMINIMAL_STACK_SIZE+100, NULL, main_TASK_PRIORITY, &HandleTask3);
+ 	//xTaskCreate( prvSystemchange, "pvrdate", configMINIMAL_STACK_SIZE+100, NULL, main_TASK_PRIORITY, &HandleTask4);
 	/* Start the scheduler. */
 	vTaskStartScheduler();
 
@@ -273,17 +284,20 @@ static void prvFlashTask1( void *pvParameters )
     for( ;; )
 	{
     	vTaskSuspend(NULL);
-		/* Block 1 second. */
+    	calc_date();
+		sprintf(buff,"%d/%d/%d	%d:%d:%d \n\r",actual_date.day,actual_date.month,actual_date.year,actual_date.hour,actual_date.minute,actual_date.second);
+		prvSendMessageUSART2(buff);
+		/*// Block 1 second.
     	//vTaskDelayUntil( &xLastExecutionTime, 1000 / portTICK_RATE_MS ); // ciclo de 1 s em 1s
 		vTaskDelay( ( TickType_t ) 1000 / portTICK_PERIOD_MS  );	// ciclo de 1 s + ciclo da task em 1s + ciclo da task
 		//sprintf(buff,"Teste");
 		//prvSendMessageUSART2(buff);
-		RCC_ClocksTypeDef ClksFreq;
+		//RCC_ClocksTypeDef ClksFreq;
 		RCC_GetClocksFreq(&ClksFreq);
 		size_t RTC_Counter = RTC_GetCounter();
 		sprintf(buff,"%zu",RTC_Counter);
 		prvSendMessageUSART2(buff);
-		vTaskResume(HandleTask2);
+		vTaskResume(HandleTask2);*/
 
 
         /* Toggle the LED */
@@ -513,6 +527,7 @@ static void prvSystemchange( void *pvParameters )
     	if(MyConfig.comand[3]==1){ //atualização data
     		if (MyConfig.comand[0]==1){
     			Runing_Config.date[0]=MyConfig.date[0];Runing_Config.date[1]=MyConfig.date[1];Runing_Config.date[2]=MyConfig.date[2];Runing_Config.date[3]=MyConfig.date[3];Runing_Config.date[4]=MyConfig.date[4];Runing_Config.date[5]=MyConfig.date[5];
+    			//falta reiniciar o rtc ou guardar em q valor ia o count a quando da alteração da data e isto obrigaria a alteração da proxima parte do codigo
     			sprintf(buf, "\t  %d/%d/%d  -  %d:%d:%d",Runing_Config.date[0],Runing_Config.date[1],Runing_Config.date[2],Runing_Config.date[3],Runing_Config.date[4],Runing_Config.date[5]);prvSendMessageUSART2(buf);
     		}
     	}
@@ -625,6 +640,75 @@ void verify_date(void){
 	}else{MyConfig.comand[0]=0;MyConfig.comand[3]=100;sprintf(buf, "\t erro \r");prvSendMessageUSART2(buf);}
 	vTaskResume(HandleTask3);
 }
+void calc_date(){		//função para atualização da data
+	RCC_ClocksTypeDef ClksFreq;
+	RCC_GetClocksFreq(&ClksFreq);
+	uint32_t tempo_base_cal_val = RTC_GetCounter();							//variavel ira guardar o valor do que estamos a calcular quando estivermos a calcular as horas ele tera o total das horas ... ...
+	uint32_t times;															//variavel ira guardar o valor a cima do que estamos a calcular quando estivermos a calcular as horas ele tera o total dos dias ... ...
+	// atualizar a data no run_config struct
+
+	//calc second
+	tempo_base_cal_val=tempo_base_cal_val+Runing_Config.date[5]; 	//numero de segundos tendo em conta os segundos de inicialização
+	times=(tempo_base_cal_val)/60;											//quantos vezes ja se deu a volta aos segundos - base em min apartir desta divisão
+	actual_date.second=tempo_base_cal_val-(times*60); 										//valor atual dos segundos
+	//calc minute
+	tempo_base_cal_val=times+Runing_Config.date[4];							//numero de minutos tendo em conta os minutos de inicialização
+	times=(tempo_base_cal_val)/60;											//quantos vezes ja se deu a volta aos min - base em horas apartir desta divisao
+	actual_date.minute=tempo_base_cal_val-(times*60);										//valor atual dos min
+	//calc hour
+	tempo_base_cal_val=times+Runing_Config.date[3];							//numero de horas tendo em conta as horas de inicialização
+	times=(tempo_base_cal_val)/24;											//quantas vezes ja se deu a volta as horas - base em dias apartir desta divisao
+	actual_date.hour=tempo_base_cal_val-(times*24);										//valor atual das horas
+
+	actual_date.day=times+Runing_Config.date[2];										//soma-se aos dia da ultima mes
+
+	if(actual_date.day>28){													//possivelmente sera necessario corrigir a data
+		correct_date();
+	}
+	//falta o dia da semna
+}
+
+//year, month, day, minute, hour , second;//actual_date
+void correct_date(){		//corrige a data e reseta o clock caso o mes mude
+	int dias_max;int vertifi=0;
+	while(vertifi!=1){
+		if(actual_date.month==2){
+			if(actual_date.year%4==0){
+				if(actual_date.year%100!=0){
+					dias_max=29;
+				}else{
+					if(actual_date.year%400==0){
+						dias_max=29;
+					}else{dias_max=28;}
+				}
+			}else{dias_max=28;}
+			if( actual_date.day>=1 && actual_date.day<=dias_max){vertifi=1;			//ativar flag de verificação
+			}else{actual_date.month++;actual_date.day=actual_date.day-dias_max;		//incrementar mes e subtrair ao dia o numero de dias maximos do mes
+			RTC_SetCounter(0);Runing_Config.date[0]=actual_date.year;Runing_Config.date[1]=actual_date.month;Runing_Config.date[2]=actual_date.day;Runing_Config.date[3]=actual_date.hour;Runing_Config.date[4]=actual_date.minute;Runing_Config.date[5]=actual_date.second; //reset aos dias e ao counter
+			}
+		}
+
+
+		if(actual_date.month==1||actual_date.month==3||actual_date.month==5||actual_date.month==7||actual_date.month==8||actual_date.month==10||actual_date.month==12){
+			dias_max=31;
+			if( actual_date.day>=1 && actual_date.day<=dias_max){vertifi=1;			//ativar flag de verificação
+			}else{actual_date.month++;actual_date.day=actual_date.day-dias_max;		//incrementar mes e subtrair ao dia o numero de dias maximos do mes
+			RTC_SetCounter(0);Runing_Config.date[0]=actual_date.year;Runing_Config.date[1]=actual_date.month;Runing_Config.date[2]=actual_date.day;Runing_Config.date[3]=actual_date.hour;Runing_Config.date[4]=actual_date.minute;Runing_Config.date[5]=actual_date.second; //reset aos dias e ao counter
+			}
+		}
+
+		if(actual_date.month==4||actual_date.month==6||actual_date.month==9||actual_date.month==11){
+			dias_max=30;
+			if( actual_date.day>=1 && actual_date.day<=dias_max){vertifi=1;			//ativar flag de verificação
+			}else{actual_date.month++;actual_date.day=actual_date.day-dias_max;		//incrementar mes e subtrair ao dia o numero de dias maximos do mes
+			RTC_SetCounter(0);Runing_Config.date[0]=actual_date.year;Runing_Config.date[1]=actual_date.month;Runing_Config.date[2]=actual_date.day;Runing_Config.date[3]=actual_date.hour;Runing_Config.date[4]=actual_date.minute;Runing_Config.date[5]=actual_date.second; //reset aos dias e ao counter
+			}
+		}
+		if(actual_date.month==13){actual_date.year++;actual_date.month=1;}				//caso tenha sido incrementado a mes de 12 para 13
+	}
+	return ;
+}
+
 ///////////////////////////////////////____________________i2c_functions_____________////////////////////////
 
 
@@ -1115,6 +1199,9 @@ GPIO_InitTypeDef GPIO_InitStructure;
 
 static void prvSetupRTC(void)
 {
+	 //RTC_InitTypeDef RTC_InitStructure;
+	 //RTC_TimeTypeDef RTC_TimeStructure;
+	 //RTC_DateTypeDef RTC_DateStructure;
 	//
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_PWR | RCC_APB1Periph_BKP, ENABLE);
 	//
@@ -1123,18 +1210,94 @@ static void prvSetupRTC(void)
 	if ((RCC->BDCR & RCC_BDCR_RTCEN) != RCC_BDCR_RTCEN)
 	{
 		//
+
 		RCC_BackupResetCmd(ENABLE);
 		RCC_BackupResetCmd(DISABLE);
 		//
+
 		RCC_LSEConfig(RCC_LSE_ON);
 		while ((RCC->BDCR & RCC_BDCR_LSERDY) != RCC_BDCR_LSERDY) {}
-		RCC_RTCCLKConfig(RCC_RTCCLKSource_LSE);
-		RTC_SetPrescaler(0x7FFF); //
-		//
+		RCC_RTCCLKConfig(RCC_RTCCLKSource_LSE);		//32 KHz	 RTCCLK = 32768Hz
+		RTC_SetPrescaler(0x7FFF); 					//7fff=32767
+		//RTC_TR(ENABLE);
+		//RTC_DR(ENABLE);
 		RCC_RTCCLKCmd(ENABLE);
-		//
 		RTC_WaitForSynchro();
+		// Wait until last write operation on RTC registers has finished
+		RTC_WaitForLastTask();
+		// Enable the RTC Second
+		RTC_ITConfig(RTC_IT_SEC, ENABLE);
+		// Wait until last write operation on RTC registers has finished
+		RTC_WaitForLastTask();
+		//Change the current time
+		RTC_SetCounter(1);
+		// Wait until last write operation on RTC registers has finished
+		/*RTC_WaitForLastTask();
+		KP_WriteBackupRegister(BKP_DR1, 0xA5A5);*/
+
+		/*	//rtc date int 	https://www.st.com/resource/en/user_manual/dm00023896-description-of-stm32f1xx-standard-peripheral-library-stmicroelectronics.pdf
+		 RTC_InitStructure.RTC_AsynchPrediv = 127;
+		 RTC_InitStructure.RTC_SynchPrediv = 255;
+		 RTC_InitStructure.RTC_HourFormat = RTC_HourFormat_24;
+		 RTC_Init(&RTC_InitStructure);
+
+		 RTC_TimeStructure.RTC_Hours = 0x08;
+		 RTC_TimeStructure.RTC_Minutes = 0x00;
+		 RTC_TimeStructure.RTC_Seconds = 0x00;
+		RTC_SetTime(RTC_Format_BCD, &RTC_TimeStructure);
+
+		 RTC_DateStructure.RTC_Month = RTC_Month_May;
+		 RTC_DateStructure.RTC_WeekDay = RTC_Weekday_Monday;
+		 RTC_DateStructure.RTC_Date = 0x30;
+		 RTC_DateStructure.RTC_Year = 0x11;
+		 RTC_SetDate(RTC_Format_BCD, &RTC_DateStructure); */
+
+		/*
+		RTC_WPR(0xCA);
+		RTC_WPR(0x53);
+		RTC_ISR(1);
+		While(){}//Poll INITF bit of in RTC_ISR until it is set
+		RTC_TR(ENABLE);	RTC_DR(ENABLE);
+		Set FMT bit in RTC_CR register							FMT = 0: 24 hour/day format	FMT = 1: AM/PM hour format
+		*/
+		/*RTC_SetTime(RTC_Format_BCD, &RTC_TimeStructure);
+		RTC_SetTime();
+		RTC_SetDate();
+		RTC_GetTime();
+		RTC_GetDate();*/
+		//RTC_DayLightSavingConfig()
+
+		//RTC_TimeStampCmd(RTC_TimeStampEdge_Falling, ENABLE);
+
 	}
+}
+uint32_t Time_Regulate(void)
+{
+  uint32_t Tmp_HH = 0xFF, Tmp_MM = 0xFF, Tmp_SS = 0xFF;
+
+  printf("\r\n==============Time Settings=====================================");
+  printf("\r\n  Please Set Hours");
+
+  while (Tmp_HH == 0xFF)
+  {
+    Tmp_HH = USART_Scanf(23);
+  }
+  printf(":  %d", Tmp_HH);
+  printf("\r\n  Please Set Minutes");
+  while (Tmp_MM == 0xFF)
+  {
+    Tmp_MM = USART_Scanf(59);
+  }
+  printf(":  %d", Tmp_MM);
+  printf("\r\n  Please Set Seconds");
+  while (Tmp_SS == 0xFF)
+  {
+    Tmp_SS = USART_Scanf(59);
+  }
+  printf(":  %d", Tmp_SS);
+
+  /* Return the value to store in RTC counter register */
+  return((Tmp_HH*3600 + Tmp_MM*60 + Tmp_SS));
 }
 
 static void prvSetupUSART_INT( void )
